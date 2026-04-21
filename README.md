@@ -21,6 +21,22 @@ python -m http.server 8080
 
 然後開啟 `http://localhost:8080`。
 
+## GitHub Pages
+
+這個專案可以直接用 GitHub Pages 以靜態網站方式發布：
+
+1. 到 repository 的 `Settings`
+2. 打開 `Pages`
+3. `Source` 選 `Deploy from a branch`
+4. `Branch` 選 `main`，資料夾選 `/ (root)`
+5. 儲存後等待 GitHub 建置完成
+
+預設網站網址會是：
+
+```text
+https://ncusspm25.github.io/record_sbd/
+```
+
 ## 設計依據
 
 這個 app 的核心邏輯是：
