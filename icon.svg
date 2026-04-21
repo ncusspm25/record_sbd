@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#132034" />
+      <stop offset="100%" stop-color="#0f5f8c" />
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f7f2ea" />
+      <stop offset="100%" stop-color="#d9d2c5" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#bg)" />
+  <rect x="28" y="120" width="200" height="16" rx="8" fill="url(#bar)" />
+  <rect x="44" y="96" width="18" height="64" rx="6" fill="#b9862f" />
+  <rect x="194" y="96" width="18" height="64" rx="6" fill="#b9862f" />
+  <rect x="74" y="86" width="26" height="84" rx="8" fill="#9a4a2e" opacity="0.95" />
+  <rect x="156" y="86" width="26" height="84" rx="8" fill="#9a4a2e" opacity="0.95" />
+  <path d="M86 56h83c19 0 35 16 35 35v8h-20v-8c0-8-7-15-15-15H86c-8 0-15 7-15 15v8H51v-8c0-19 16-35 35-35Z" fill="#f7f2ea" opacity="0.9" />
+  <text x="128" y="212" text-anchor="middle" fill="#f7f2ea" font-family="Arial, sans-serif" font-size="48" font-weight="700">SBD</text>
+</svg>

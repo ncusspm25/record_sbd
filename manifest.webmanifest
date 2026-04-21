@@ -1,0 +1,16 @@
+{
+  "name": "SBD Lab",
+  "short_name": "SBD Lab",
+  "description": "以公斤制為主的深蹲、臥推、硬舉訓練記錄與 RPE/e1RM 計算工具。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#efe8db",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
