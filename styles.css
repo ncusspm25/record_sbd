@@ -451,6 +451,61 @@ textarea {
   min-height: 170px;
 }
 
+.storage-note {
+  margin-top: 16px;
+}
+
+.storage-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 16px;
+}
+
+.storage-copy {
+  margin-top: 10px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.projection-scroll {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.projection-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.projection-table th,
+.projection-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+
+.projection-table th:first-child,
+.projection-table td:first-child {
+  text-align: left;
+  font-weight: 700;
+}
+
+.projection-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.projection-table th:last-child,
+.projection-table td:last-child {
+  border-right: 0;
+}
+
 .plate-row,
 .metric-row {
   display: flex;

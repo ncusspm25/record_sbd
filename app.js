@@ -241,12 +241,12 @@ const elements = {
   estimateReps: document.querySelector("#estimate-reps"),
   estimateRpe: document.querySelector("#estimate-rpe"),
   estimateOutput: document.querySelector("#estimate-output"),
-  targetLift: document.querySelector("#target-lift"),
-  targetOrm: document.querySelector("#target-orm"),
   targetReps: document.querySelector("#target-reps"),
   targetRpe: document.querySelector("#target-rpe"),
   targetOutput: document.querySelector("#target-output"),
   plateOutput: document.querySelector("#plate-output"),
+  projectionGrid: document.querySelector("#projection-grid"),
+  storageNote: document.querySelector("#storage-note"),
   liftCards: document.querySelector("#lift-cards"),
   recentPrFeed: document.querySelector("#recent-pr-feed"),
   tableBody: document.querySelector("#log-table-body"),
@@ -285,18 +285,8 @@ function bindEvents() {
     element.addEventListener("input", renderCalculators);
   });
 
-  elements.targetLift.addEventListener("input", () => {
-    syncTargetOrm(true);
-    renderCalculators();
-  });
-
   [elements.targetReps, elements.targetRpe].forEach((element) => {
     element.addEventListener("input", renderCalculators);
-  });
-
-  elements.targetOrm.addEventListener("input", () => {
-    elements.targetOrm.dataset.mode = "manual";
-    renderCalculators();
   });
 
   elements.exportJson.addEventListener("click", exportJson);
@@ -370,6 +360,7 @@ function handleLoadDemo() {
 
 function renderApp() {
   applyActiveView();
+  renderStorageNote();
   renderEntryHint();
   renderHeadlineStats();
   renderCalculators();
@@ -414,8 +405,6 @@ function renderEntryHint() {
 }
 
 function renderCalculators() {
-  syncTargetOrm();
-
   const estimateWeight = toNumber(elements.estimateWeight.value);
   const estimateReps = toNumber(elements.estimateReps.value);
   const estimateRpe = toNumber(elements.estimateRpe.value);
@@ -425,12 +414,11 @@ function renderCalculators() {
   const estimatePercent = estimateOneRm ? (estimateWeight / estimateOneRm) * 100 : 0;
   const targetRir = rirFromRpe(toNumber(elements.targetRpe.value));
   const targetReps = toNumber(elements.targetReps.value);
-  const targetLift = elements.targetLift.value;
-  const targetOrm = toNumber(elements.targetOrm.value);
-  const suggestedWeight = targetOrm
-    ? prescribeLoad(targetOrm, targetReps, toNumber(elements.targetRpe.value), state.profile.formula, state.profile.rounding)
+  const targetRpe = toNumber(elements.targetRpe.value);
+  const suggestedWeight = estimateOneRm
+    ? prescribeLoad(estimateOneRm, targetReps, targetRpe, state.profile.formula, state.profile.rounding)
     : 0;
-  const suggestedPercent = targetOrm ? (suggestedWeight / targetOrm) * 100 : 0;
+  const suggestedPercent = estimateOneRm ? (suggestedWeight / estimateOneRm) * 100 : 0;
 
   elements.estimateOutput.innerHTML = [
     {
@@ -450,15 +438,15 @@ function renderCalculators() {
   elements.targetOutput.innerHTML = [
     {
       label: "建議重量",
-      value: targetOrm ? formatKg(suggestedWeight) : "請先輸入",
-      copy: targetOrm
-        ? `${LIFT_META[targetLift].label} 目標 ${targetReps} reps @ RPE ${elements.targetRpe.value}，約為 ${formatNumber(suggestedPercent, 1)}% 1RM。`
-        : "你可以手動輸入 1RM，或先記錄訓練讓系統自動帶入該主項最佳 e1RM。",
+      value: estimateOneRm ? formatKg(suggestedWeight) : "請先輸入",
+      copy: estimateOneRm
+        ? `以 ${LIFT_META[estimateLift].label} 的基準組推算，${targetReps} reps @ RPE ${targetRpe} 約為 ${formatNumber(suggestedPercent, 1)}% e1RM。`
+        : "先在左邊輸入你剛做完的一組，例如 120 x 3 @ 6，系統就能反推下一組重量。",
     },
     {
       label: "保留次數",
       value: `${formatNumber(targetRir, 1)} RIR`,
-      copy: targetLift === "deadlift" && targetReps >= 6
+      copy: estimateLift === "deadlift" && targetReps >= 6
         ? "硬舉高次數的 RPE 可靠度相對差，建議保守看待。"
         : "RPE 換算使用 RPE 10 = 0 RIR 的標準邏輯。",
     },
@@ -467,6 +455,7 @@ function renderCalculators() {
     .join("");
 
   renderPlateBreakdown(suggestedWeight);
+  renderProjectionGrid(estimateLift, estimateOneRm);
 }
 
 function renderLiftCards() {
@@ -600,7 +589,7 @@ function renderPlateBreakdown(targetWeight) {
   if (!targetWeight) {
     elements.plateOutput.innerHTML = `
       <div class="empty-state">
-        <p>先在左側輸入基準 1RM、目標次數與 RPE，系統就會算出建議重量與槓片配置。</p>
+        <p>先輸入上方基準組與你想做的 reps、RPE，系統就會算出建議重量與槓片配置。</p>
       </div>
     `;
     return;
@@ -991,16 +980,65 @@ function rirFromRpe(rpe) {
   return clamp(10 - toNumber(rpe), 0, 4);
 }
 
-function syncTargetOrm(forceAutoFill = false) {
-  const selectedLift = elements.targetLift.value;
-  const fallback = getLiftStats(selectedLift).bestE1RM;
-  const hasManualValue = elements.targetOrm.dataset.mode === "manual";
-  const existingValue = elements.targetOrm.value.trim();
-
-  if (!existingValue || !hasManualValue || forceAutoFill) {
-    elements.targetOrm.value = fallback ? formatNumber(fallback, 1) : "";
-    elements.targetOrm.dataset.mode = "auto";
+function renderProjectionGrid(lift, oneRm) {
+  if (!oneRm) {
+    elements.projectionGrid.innerHTML = `
+      <div class="empty-state">
+        <p>先輸入基準組，系統就會列出 1 到 8 下在不同 RPE 下的估計重量。</p>
+      </div>
+    `;
+    return;
   }
+
+  const columnRpes = [6, 7, 8, 9, 9.5];
+  const rowReps = [1, 2, 3, 4, 5, 6, 7, 8];
+
+  elements.projectionGrid.innerHTML = `
+    <div class="projection-scroll">
+      <table class="projection-table">
+        <thead>
+          <tr>
+            <th>${LIFT_META[lift].label}</th>
+            ${columnRpes.map((rpe) => `<th>RPE ${rpe}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${rowReps
+            .map(
+              (reps) => `
+                <tr>
+                  <td>${reps} 下</td>
+                  ${columnRpes
+                    .map((rpe) => {
+                      const weight = prescribeLoad(oneRm, reps, rpe, state.profile.formula, state.profile.rounding);
+                      return `<td>${formatKg(weight)}</td>`;
+                    })
+                    .join("")}
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint">這張表以目前基準組推得的 e1RM 為基礎，常用於當天調整下一組重量，不等於正式實測 1RM。</p>
+  `;
+}
+
+function renderStorageNote() {
+  elements.storageNote.innerHTML = `
+    <div class="storage-card">
+      <div class="result-label">資料儲存方式</div>
+      <div class="storage-copy">
+        目前這版 SBD app 是存在你現在使用的瀏覽器 <code>localStorage</code>，也就是「這台裝置上的這個瀏覽器」。
+        它不是自動雲端同步，所以換手機、換瀏覽器、清除網站資料後，記錄不會自己跟過去。
+      </div>
+      <div class="storage-copy">
+        如果你要像 <code>D:\\AI_dev\\記帳</code> 那個專案一樣，我們可以加上 Google 登入 + Firebase Firestore，
+        讓你用同一個帳號在不同手機或電腦同步訓練資料。
+      </div>
+    </div>
+  `;
 }
 
 function buildPlateBreakdown(targetWeight, barbellWeight) {

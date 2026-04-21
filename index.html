@@ -92,6 +92,7 @@
               <input id="barbell-weight" name="barbellWeight" type="number" min="5" step="0.5" value="20" />
             </label>
           </form>
+          <div class="storage-note" id="storage-note"></div>
         </section>
 
         <section class="stats-grid section-view" id="headline-stats" data-view="overview"></section>
@@ -161,13 +162,13 @@
           <div class="section-title">
             <div>
               <p class="section-kicker">Calculator</p>
-              <h2>RPE / e1RM 換算</h2>
+              <h2>RPE 推算計算機</h2>
             </div>
-            <p class="section-note">支援「做完一組估算 1RM」與「依目標 reps/RPE 反推重量」。</p>
+            <p class="section-note">先輸入你剛做完的一組，再推算接下來任意 reps、任意 RPE 大概該做多少公斤。</p>
           </div>
           <div class="calculator-grid">
             <article class="calculator-card">
-              <h3>已完成組 → e1RM</h3>
+              <h3>基準組</h3>
               <form id="estimate-form" class="mini-form">
                 <label>
                   <span>主項</span>
@@ -194,22 +195,10 @@
             </article>
 
             <article class="calculator-card">
-              <h3>目標 reps/RPE → 建議重量</h3>
+              <h3>下一組推算</h3>
               <form id="target-form" class="mini-form">
                 <label>
-                  <span>主項</span>
-                  <select id="target-lift" name="lift">
-                    <option value="squat">深蹲</option>
-                    <option value="bench">臥推</option>
-                    <option value="deadlift">硬舉</option>
-                  </select>
-                </label>
-                <label>
-                  <span>基準 1RM（kg）</span>
-                  <input id="target-orm" type="number" min="0" step="0.5" />
-                </label>
-                <label>
-                  <span>目標次數</span>
+                  <span>你想做幾下</span>
                   <input id="target-reps" type="number" min="1" step="1" value="4" />
                 </label>
                 <label>
@@ -218,14 +207,15 @@
                 </label>
               </form>
               <div class="result-stack" id="target-output"></div>
+              <div class="plate-output" id="plate-output"></div>
             </article>
 
             <article class="calculator-card">
-              <h3>槓片配置</h3>
+              <h3>快速換算表</h3>
               <p class="calculator-copy">
-                依照建議重量與目前設定的槓鈴重量，自動拆出每邊需要的公斤槓片。
+                用上方基準組的 e1RM，快速列出常用 reps 與 RPE 的建議重量。任意 reps 請用左邊的「下一組推算」。
               </p>
-              <div class="plate-output" id="plate-output"></div>
+              <div id="projection-grid"></div>
             </article>
           </div>
         </section>
