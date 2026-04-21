@@ -50,8 +50,15 @@
         </aside>
       </header>
 
+      <nav class="view-nav panel" aria-label="功能選單">
+        <button class="view-tab active" type="button" data-view-target="overview">總覽</button>
+        <button class="view-tab" type="button" data-view-target="log">記錄</button>
+        <button class="view-tab" type="button" data-view-target="calculator">計算機</button>
+        <button class="view-tab" type="button" data-view-target="research">研究</button>
+      </nav>
+
       <main class="layout">
-        <section class="panel profile-panel">
+        <section class="panel profile-panel section-view" data-view="overview">
           <div class="section-title">
             <div>
               <p class="section-kicker">Profile</p>
@@ -87,9 +94,9 @@
           </form>
         </section>
 
-        <section class="stats-grid" id="headline-stats"></section>
+        <section class="stats-grid section-view" id="headline-stats" data-view="overview"></section>
 
-        <section class="panel entry-panel">
+        <section class="panel entry-panel section-view" data-view="log">
           <div class="section-title">
             <div>
               <p class="section-kicker">Log</p>
@@ -150,7 +157,7 @@
           </form>
         </section>
 
-        <section class="panel calculator-panel">
+        <section class="panel calculator-panel section-view" data-view="calculator">
           <div class="section-title">
             <div>
               <p class="section-kicker">Calculator</p>
@@ -223,7 +230,7 @@
           </div>
         </section>
 
-        <section class="panel trend-panel">
+        <section class="panel trend-panel section-view" data-view="overview">
           <div class="section-title">
             <div>
               <p class="section-kicker">Trend</p>
@@ -241,7 +248,7 @@
           </div>
         </section>
 
-        <section class="panel history-panel">
+        <section class="panel history-panel section-view" data-view="log">
           <div class="section-title">
             <div>
               <p class="section-kicker">History</p>
@@ -274,7 +281,7 @@
           </div>
         </section>
 
-        <section class="panel research-panel">
+        <section class="panel research-panel section-view" data-view="research">
           <div class="section-title">
             <div>
               <p class="section-kicker">Evidence</p>
@@ -287,11 +294,18 @@
       </main>
     </div>
 
-    <template id="empty-state-template">
-      <div class="empty-state">
-        <p>目前還沒有資料，先新增第一筆訓練，或用「載入示範資料」快速看看功能。</p>
-      </div>
-    </template>
+      <template id="empty-state-template">
+        <div class="empty-state">
+          <p>目前還沒有資料，先新增第一筆訓練，或用「載入示範資料」快速看看功能。</p>
+        </div>
+      </template>
+
+      <nav class="mobile-dock" aria-label="手機功能選單">
+        <button class="dock-tab active" type="button" data-view-target="overview">總覽</button>
+        <button class="dock-tab" type="button" data-view-target="log">記錄</button>
+        <button class="dock-tab" type="button" data-view-target="calculator">計算</button>
+        <button class="dock-tab" type="button" data-view-target="research">研究</button>
+      </nav>
 
     <script src="./app.js"></script>
   </body>

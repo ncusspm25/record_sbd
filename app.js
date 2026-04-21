@@ -208,6 +208,9 @@ const DEFAULT_STATE = {
     rounding: 2.5,
     barbellWeight: 20,
   },
+  ui: {
+    activeView: "overview",
+  },
   entries: [],
 };
 
@@ -254,6 +257,8 @@ const elements = {
   importFile: document.querySelector("#import-file"),
   clearData: document.querySelector("#clear-data"),
   emptyTemplate: document.querySelector("#empty-state-template"),
+  viewButtons: document.querySelectorAll("[data-view-target]"),
+  sectionViews: document.querySelectorAll(".section-view"),
 };
 
 fillRpeSelect(elements.entryRpe, 8);
@@ -262,6 +267,7 @@ fillRpeSelect(elements.targetRpe, 8);
 
 hydrateProfileInputs();
 setDefaultDate();
+applyActiveView();
 renderApp();
 bindEvents();
 registerServiceWorker();
@@ -298,6 +304,11 @@ function bindEvents() {
   elements.importButton.addEventListener("click", () => elements.importFile.click());
   elements.importFile.addEventListener("change", importJson);
   elements.clearData.addEventListener("click", clearAllData);
+  elements.viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveView(button.dataset.viewTarget);
+    });
+  });
 }
 
 function handleProfileChange() {
@@ -358,6 +369,7 @@ function handleLoadDemo() {
 }
 
 function renderApp() {
+  applyActiveView();
   renderEntryHint();
   renderHeadlineStats();
   renderCalculators();
@@ -772,6 +784,7 @@ function importJson(event) {
       const parsed = JSON.parse(reader.result);
       const nextState = normalizeImportedState(parsed);
       state.profile = nextState.profile;
+      state.ui = nextState.ui;
       state.entries = nextState.entries;
       sortEntries();
       persistState();
@@ -794,6 +807,7 @@ function clearAllData() {
   }
 
   state.profile = structuredClone(DEFAULT_STATE.profile);
+  state.ui = structuredClone(DEFAULT_STATE.ui);
   state.entries = [];
   persistState();
   hydrateProfileInputs();
@@ -1031,6 +1045,11 @@ function normalizeImportedState(data) {
     rounding: toNumber(data?.profile?.rounding, 2.5),
     barbellWeight: toNumber(data?.profile?.barbellWeight, 20),
   };
+  const ui = {
+    activeView: ["overview", "log", "calculator", "research"].includes(data?.ui?.activeView)
+      ? data.ui.activeView
+      : "overview",
+  };
 
   const entriesSource = Array.isArray(data?.entries) ? data.entries : [];
   const entries = entriesSource
@@ -1049,7 +1068,7 @@ function normalizeImportedState(data) {
     }))
     .filter((entry) => entry.weight > 0);
 
-  return { profile, entries };
+  return { profile, ui, entries };
 }
 
 function persistState() {
@@ -1061,6 +1080,29 @@ function hydrateProfileInputs() {
   elements.formula.value = state.profile.formula;
   elements.rounding.value = String(state.profile.rounding);
   elements.barbellWeight.value = String(state.profile.barbellWeight);
+}
+
+function setActiveView(view) {
+  if (!["overview", "log", "calculator", "research"].includes(view)) {
+    return;
+  }
+
+  state.ui.activeView = view;
+  persistState();
+  applyActiveView();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function applyActiveView() {
+  const activeView = state.ui?.activeView || "overview";
+
+  elements.sectionViews.forEach((section) => {
+    section.hidden = section.dataset.view !== activeView;
+  });
+
+  elements.viewButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewTarget === activeView);
+  });
 }
 
 function setDefaultDate() {
