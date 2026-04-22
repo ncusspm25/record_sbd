@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
-      content="SBD Lab 是一個以公斤制為主的深蹲、臥推、硬舉訓練記錄與 RPE 換算工具，支援 PR 追蹤、e1RM 趨勢、RPE 計算與資料匯出。"
+      content="SBD Lab 是以公斤制為主的深蹲、臥推、硬舉訓練記錄與 RPE 推算工具，支援 PR、e1RM、Google 登入與 Firestore 雲端同步。"
     />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#17324d" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SBD Lab" />
@@ -26,274 +26,273 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">SBD Training Intelligence</p>
+          <p class="eyebrow">SBD Training Desk</p>
           <h1>SBD Lab</h1>
           <p class="hero-text">
-            以公斤制打造的深蹲、臥推、硬舉訓練記錄 app，整合
-            RPE/RIR、自動 e1RM、PR 追蹤與研究摘要，讓你能用同一套系統管理日常訓練與長期進步。
+            以公斤制打造的深蹲、臥推、硬舉訓練記錄與 RPE 推算工具。你可以先輸入剛完成的一組，立刻推算接下來任意次數、任意 RPE 該上多少重量。
           </p>
           <div class="hero-badges">
             <span class="badge">公斤制優先</span>
-            <span class="badge">SBD PR 追蹤</span>
-            <span class="badge">RPE 換算</span>
-            <span class="badge">離線可用</span>
+            <span class="badge">RPE 5.0 - 10.0</span>
+            <span class="badge">e1RM 與 PR</span>
+            <span class="badge">本機與雲端同步</span>
           </div>
         </div>
-        <aside class="hero-panel panel glass">
+        <aside class="hero-panel panel">
           <div class="panel-heading">
-            <h2>訓練哲學</h2>
-            <span class="micro-tag">Research-backed</span>
+            <h2>設計原則</h2>
+            <span class="micro-tag">Coach Flow</span>
           </div>
           <ul class="compact-list">
-            <li>用 RPE 管理每日波動，但不把它當成絕對真值。</li>
-            <li>用 e1RM 看長期趨勢，比只盯單日重量更穩定。</li>
-            <li>用 PR 分成重量 PR、e1RM PR、單日容量 PR。</li>
-            <li>對硬舉高次數 RPE 特別保守，避免誤判訓練壓力。</li>
+            <li>RPE 用來調整當天訓練，PR 與 e1RM 用來看長期進步。</li>
+            <li>先輸入已完成組，再推算目標組，符合實戰選重流程。</li>
+            <li>高次數硬舉的 RPE 可靠度較低，介面會主動提醒。</li>
+            <li>未登入時存在瀏覽器本機；登入後可同步到你的 Firestore。</li>
           </ul>
         </aside>
       </header>
 
       <nav class="view-nav panel" aria-label="功能選單">
-        <button class="view-tab active" type="button" data-view-target="overview">總覽</button>
+        <button class="view-tab active" type="button" data-view-target="calculator">計算機</button>
+        <button class="view-tab" type="button" data-view-target="overview">總覽</button>
         <button class="view-tab" type="button" data-view-target="log">記錄</button>
-        <button class="view-tab" type="button" data-view-target="calculator">計算機</button>
         <button class="view-tab" type="button" data-view-target="research">研究</button>
       </nav>
 
       <main class="layout">
-        <section class="panel profile-panel section-view" data-view="overview">
-          <div class="section-title">
-            <div>
-              <p class="section-kicker">Profile</p>
-              <h2>訓練設定</h2>
+        <section class="panel calculator-panel section-view" data-view="calculator">
+          <div class="calc-shell">
+            <div class="calc-stage">
+              <div class="calc-hero-card">
+                <p class="calc-hero-kicker">推算重量</p>
+                <div class="calc-hero-number" id="calc-projected-number">0</div>
+                <p class="calc-hero-meta" id="calc-hero-meta">e1RM 0 kg</p>
+              </div>
+
+              <div class="calc-grid">
+                <article class="work-card">
+                  <div class="work-card-head">
+                    <h2>已完成組</h2>
+                    <p>先輸入你剛剛做完的一組，例如 120 x 3 @ 6。</p>
+                  </div>
+                  <form id="estimate-form" class="work-form">
+                    <label>
+                      <span>主項</span>
+                      <select id="estimate-lift" name="estimateLift">
+                        <option value="squat">深蹲</option>
+                        <option value="bench">臥推</option>
+                        <option value="deadlift">硬舉</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>重量（kg）</span>
+                      <input id="estimate-weight" type="number" min="0" step="0.5" value="120" />
+                    </label>
+                    <label>
+                      <span>次數</span>
+                      <input id="estimate-reps" type="number" min="1" max="20" step="1" value="3" />
+                    </label>
+                    <label>
+                      <span>RPE</span>
+                      <select id="estimate-rpe"></select>
+                    </label>
+                  </form>
+                  <div id="estimate-output" class="result-stack"></div>
+                </article>
+
+                <article class="work-card">
+                  <div class="work-card-head">
+                    <h2>目標組</h2>
+                    <p>選擇你下一組想做的次數與目標 RPE，系統會直接估算建議重量。</p>
+                  </div>
+                  <form id="target-form" class="work-form">
+                    <label>
+                      <span>目標次數</span>
+                      <select id="target-reps"></select>
+                    </label>
+                    <label>
+                      <span>目標 RPE</span>
+                      <select id="target-rpe"></select>
+                    </label>
+                  </form>
+                  <div id="target-output" class="result-stack"></div>
+                </article>
+              </div>
             </div>
-            <p class="section-note">所有運算都以公斤為主，並儲存在你的瀏覽器。</p>
+
+            <div class="calc-support">
+              <article class="support-card">
+                <div class="support-head">
+                  <h2>槓片配置</h2>
+                  <p>依 20 kg 槓鈴自動拆出左右槓片，並用顏色顯示常見公斤槓片。</p>
+                </div>
+                <div id="plate-output" class="plate-output"></div>
+              </article>
+
+              <article class="support-card">
+                <div class="support-head">
+                  <h2>快速參考表</h2>
+                  <p>同一個基準組延伸出 1 到 12 下、RPE 5.0 到 10.0 的常用重量區間。</p>
+                </div>
+                <div id="projection-grid"></div>
+              </article>
+            </div>
           </div>
-          <form id="profile-form" class="profile-grid">
-            <label>
-              <span>選手名稱</span>
-              <input id="athlete-name" name="athleteName" type="text" placeholder="例如：Yuan" />
-            </label>
-            <label>
-              <span>e1RM 公式</span>
-              <select id="formula" name="formula">
-                <option value="epley">Epley + RIR</option>
-                <option value="brzycki">Brzycki + RIR</option>
-              </select>
-            </label>
-            <label>
-              <span>重量進位</span>
-              <select id="rounding" name="rounding">
-                <option value="0.5">0.5 kg</option>
-                <option value="1">1 kg</option>
-                <option value="2.5" selected>2.5 kg</option>
-                <option value="5">5 kg</option>
-              </select>
-            </label>
-            <label>
-              <span>槓鈴重量</span>
-              <input id="barbell-weight" name="barbellWeight" type="number" min="5" step="0.5" value="20" />
-            </label>
-          </form>
-          <div class="storage-note" id="storage-note"></div>
         </section>
 
-        <section class="stats-grid section-view" id="headline-stats" data-view="overview"></section>
-
-        <section class="panel entry-panel section-view" data-view="log">
-          <div class="section-title">
-            <div>
-              <p class="section-kicker">Log</p>
-              <h2>新增訓練記錄</h2>
+        <section class="section-view" data-view="overview">
+          <section class="panel profile-panel">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">Profile</p>
+                <h2>個人設定</h2>
+              </div>
+              <p class="section-note">以公斤為主，資料預設保存在本機瀏覽器，可選擇登入 Google 做雲端同步。</p>
             </div>
-            <p class="section-note">每筆記錄代表同重量的工作組設定，例如 3 x 5 @ 150 kg, RPE 8。</p>
-          </div>
-          <form id="entry-form" class="entry-grid">
-            <label>
-              <span>日期</span>
-              <input id="entry-date" name="date" type="date" required />
-            </label>
-            <label>
-              <span>主項</span>
-              <select id="entry-lift" name="lift" required>
-                <option value="squat">深蹲 Squat</option>
-                <option value="bench">臥推 Bench Press</option>
-                <option value="deadlift">硬舉 Deadlift</option>
-              </select>
-            </label>
-            <label>
-              <span>變式</span>
-              <input id="entry-variant" name="variant" type="text" placeholder="例如：Paused / Comp / Tempo" />
-            </label>
-            <label>
-              <span>訓練區塊</span>
-              <input id="entry-block" name="block" type="text" placeholder="例如：Strength 1 / Peak / Base" />
-            </label>
-            <label>
-              <span>重量（kg）</span>
-              <input id="entry-weight" name="weight" type="number" min="0" step="0.5" required />
-            </label>
-            <label>
-              <span>每組次數</span>
-              <input id="entry-reps" name="reps" type="number" min="1" step="1" required />
-            </label>
-            <label>
-              <span>組數</span>
-              <input id="entry-sets" name="sets" type="number" min="1" step="1" value="1" required />
-            </label>
-            <label>
-              <span>RPE</span>
-              <select id="entry-rpe" name="rpe" required></select>
-            </label>
-            <label>
-              <span>體重（kg）</span>
-              <input id="entry-bodyweight" name="bodyweight" type="number" min="0" step="0.1" />
-            </label>
-            <label class="full-span">
-              <span>備註</span>
-              <textarea id="entry-notes" name="notes" rows="3" placeholder="例如：腰帶、比賽規格、速度偏慢、睡眠不足"></textarea>
-            </label>
-            <div class="full-span inline-actions">
-              <button class="button primary" type="submit">儲存訓練</button>
-              <button class="button subtle" type="button" id="load-demo">載入示範資料</button>
-              <p class="form-hint" id="entry-hint"></p>
-            </div>
-          </form>
-        </section>
-
-        <section class="panel calculator-panel section-view calc-dark" data-view="calculator">
-
-          <!-- Big projected weight hero -->
-          <div class="calc-hero">
-            <p class="calc-hero-eyebrow">PROJECTED WEIGHT</p>
-            <div class="calc-hero-weight" id="calc-projected-num">—</div>
-            <p class="calc-hero-e1rm" id="calc-e1rm-line">e1RM : —</p>
-          </div>
-
-          <div class="calc-body">
-
-            <!-- Completed Set -->
-            <div class="calc-card">
-              <h3 class="calc-card-title">Completed Set ⓘ</h3>
-
-              <div class="calc-outlined-field">
-                <select id="estimate-lift" class="calc-input" name="lift">
-                  <option value="squat">Squat 深蹲</option>
-                  <option value="bench">Bench Press 臥推</option>
-                  <option value="deadlift">Deadlift 硬舉</option>
+            <form id="profile-form" class="profile-grid">
+              <label>
+                <span>名稱</span>
+                <input id="athlete-name" name="athleteName" type="text" placeholder="例如：Yuan" />
+              </label>
+              <label>
+                <span>e1RM 公式</span>
+                <select id="formula" name="formula">
+                  <option value="epley">Epley + RIR</option>
+                  <option value="brzycki">Brzycki + RIR</option>
                 </select>
-                <label>Lift</label>
-              </div>
+              </label>
+              <label>
+                <span>重量進位</span>
+                <select id="rounding" name="rounding">
+                  <option value="0.5">0.5 kg</option>
+                  <option value="1">1 kg</option>
+                  <option value="2.5" selected>2.5 kg</option>
+                  <option value="5">5 kg</option>
+                </select>
+              </label>
+              <label>
+                <span>槓鈴重量</span>
+                <input id="barbell-weight" name="barbellWeight" type="number" min="5" step="0.5" value="20" />
+              </label>
+            </form>
+            <div id="storage-note" class="storage-note"></div>
+          </section>
 
-              <div class="calc-outlined-field">
-                <input id="estimate-weight" class="calc-input" type="number" min="0" step="0.5" value="100" placeholder=" " />
-                <label>Weight (kg)</label>
-              </div>
+          <section class="stats-grid" id="headline-stats"></section>
 
-              <div class="calc-two-col">
-                <div class="calc-outlined-field">
-                  <input id="estimate-reps" class="calc-input" type="number" min="1" step="1" value="5" placeholder=" " />
-                  <label>Reps</label>
-                </div>
-                <div class="calc-outlined-field">
-                  <select id="estimate-rpe" class="calc-input"></select>
-                  <label>RPE</label>
-                </div>
+          <section class="panel trend-panel">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">Trend</p>
+                <h2>e1RM 與 PR</h2>
               </div>
+              <p class="section-note">用各主項最佳 e1RM 與近期 PR 看整體進度，而不只看單日狀態。</p>
             </div>
-
-            <!-- Target Set -->
-            <div class="calc-card">
-              <h3 class="calc-card-title">Target Set ⓘ</h3>
-
-              <!-- Hidden inputs keep existing JS logic intact -->
-              <input id="target-reps" type="number" min="1" max="12" step="1" value="5" hidden />
-              <select id="target-rpe" hidden></select>
-
-              <div class="calc-stepper-field">
-                <span class="calc-stepper-label">Reps</span>
-                <div class="calc-stepper-row">
-                  <button class="stepper-btn" id="target-reps-dec" type="button">▼</button>
-                  <span class="stepper-val" id="target-reps-display">5</span>
-                  <button class="stepper-btn" id="target-reps-inc" type="button">▲</button>
-                </div>
+            <div id="lift-cards" class="lift-cards"></div>
+            <div class="recent-prs">
+              <div class="subheading">
+                <h3>最近 PR</h3>
+                <p>自動辨識重量 PR、e1RM PR 與容量 PR。</p>
               </div>
-
-              <div class="calc-stepper-field">
-                <span class="calc-stepper-label">RPE</span>
-                <div class="calc-stepper-row">
-                  <button class="stepper-btn" id="target-rpe-dec" type="button">▼</button>
-                  <span class="stepper-val" id="target-rpe-display">8.0</span>
-                  <button class="stepper-btn" id="target-rpe-inc" type="button">▲</button>
-                </div>
-              </div>
+              <div id="recent-pr-feed" class="feed-list"></div>
             </div>
-
-            <!-- Plate breakdown -->
-            <div class="plate-output" id="plate-output"></div>
-
-            <!-- Quick reference table -->
-            <div class="calc-card">
-              <h3 class="calc-card-title">Quick Reference</h3>
-              <div id="projection-grid"></div>
-            </div>
-
-            <!-- Hidden compat outputs -->
-            <div id="estimate-output" hidden></div>
-            <div id="target-output" hidden></div>
-
-          </div>
+          </section>
         </section>
 
-        <section class="panel trend-panel section-view" data-view="overview">
-          <div class="section-title">
-            <div>
-              <p class="section-kicker">Trend</p>
-              <h2>e1RM 走勢與 PR</h2>
+        <section class="section-view" data-view="log">
+          <section class="panel entry-panel">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">Log</p>
+                <h2>新增訓練記錄</h2>
+              </div>
+              <p class="section-note">每筆資料可記同重量的工作組設定，例如 150 x 5 x 3 @ 8。</p>
             </div>
-            <p class="section-note">用預估 1RM 看週期方向，比只看單日狀態更完整。</p>
-          </div>
-          <div class="lift-cards" id="lift-cards"></div>
-          <div class="recent-prs">
-            <div class="subheading">
-              <h3>最近 PR</h3>
-              <p>系統會自動辨識重量 PR、e1RM PR 與容量 PR。</p>
-            </div>
-            <div id="recent-pr-feed" class="feed-list"></div>
-          </div>
-        </section>
+            <form id="entry-form" class="entry-grid">
+              <label>
+                <span>日期</span>
+                <input id="entry-date" name="date" type="date" required />
+              </label>
+              <label>
+                <span>主項</span>
+                <select id="entry-lift" name="lift" required>
+                  <option value="squat">深蹲</option>
+                  <option value="bench">臥推</option>
+                  <option value="deadlift">硬舉</option>
+                </select>
+              </label>
+              <label>
+                <span>變式</span>
+                <input id="entry-variant" name="variant" type="text" placeholder="Comp / Paused / Tempo" />
+              </label>
+              <label>
+                <span>週期區塊</span>
+                <input id="entry-block" name="block" type="text" placeholder="Base / Strength / Peak" />
+              </label>
+              <label>
+                <span>重量（kg）</span>
+                <input id="entry-weight" name="weight" type="number" min="0" step="0.5" required />
+              </label>
+              <label>
+                <span>每組次數</span>
+                <input id="entry-reps" name="reps" type="number" min="1" step="1" required />
+              </label>
+              <label>
+                <span>組數</span>
+                <input id="entry-sets" name="sets" type="number" min="1" step="1" value="1" required />
+              </label>
+              <label>
+                <span>RPE</span>
+                <select id="entry-rpe" name="rpe" required></select>
+              </label>
+              <label>
+                <span>體重（kg）</span>
+                <input id="entry-bodyweight" name="bodyweight" type="number" min="0" step="0.1" />
+              </label>
+              <label class="full-span">
+                <span>備註</span>
+                <textarea id="entry-notes" name="notes" rows="3" placeholder="例如：腰帶、停頓明確、睡眠不足"></textarea>
+              </label>
+              <div class="full-span inline-actions">
+                <button class="button primary" type="submit">儲存訓練</button>
+                <button class="button subtle" type="button" id="load-demo">載入示範資料</button>
+                <p id="entry-hint" class="form-hint"></p>
+              </div>
+            </form>
+          </section>
 
-        <section class="panel history-panel section-view" data-view="log">
-          <div class="section-title">
-            <div>
-              <p class="section-kicker">History</p>
-              <h2>訓練記錄</h2>
+          <section class="panel history-panel">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">History</p>
+                <h2>訓練歷史</h2>
+              </div>
+              <div class="toolbar">
+                <button class="button subtle" id="export-json" type="button">匯出 JSON</button>
+                <button class="button subtle" id="export-csv" type="button">匯出 CSV</button>
+                <button class="button subtle" id="import-button" type="button">匯入資料</button>
+                <button class="button danger" id="clear-data" type="button">清空資料</button>
+                <input id="import-file" type="file" accept=".json,application/json" hidden />
+              </div>
             </div>
-            <div class="toolbar">
-              <button class="button subtle" id="export-json" type="button">匯出 JSON</button>
-              <button class="button subtle" id="export-csv" type="button">匯出 CSV</button>
-              <button class="button subtle" id="import-button" type="button">匯入資料</button>
-              <button class="button danger" id="clear-data" type="button">清空資料</button>
-              <input id="import-file" type="file" accept=".json,application/json" hidden />
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>主項</th>
+                    <th>設定</th>
+                    <th>RPE</th>
+                    <th>e1RM</th>
+                    <th>容量</th>
+                    <th>備註</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="log-table-body"></tbody>
+              </table>
             </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>主項</th>
-                  <th>設定</th>
-                  <th>RPE</th>
-                  <th>e1RM</th>
-                  <th>容量</th>
-                  <th>備註</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="log-table-body"></tbody>
-            </table>
-          </div>
+          </section>
         </section>
 
         <section class="panel research-panel section-view" data-view="research">
@@ -302,25 +301,25 @@
               <p class="section-kicker">Evidence</p>
               <h2>研究依據</h2>
             </div>
-            <p class="section-note">以下為截至 2026 年 4 月 22 日可查到、直接影響本 app 設計的代表性研究。</p>
+            <p class="section-note">這些研究影響了本 app 對 RPE、e1RM、硬舉高次數提醒與 PR 追蹤的設計方式。</p>
           </div>
           <div id="research-list" class="research-list"></div>
         </section>
       </main>
     </div>
 
-      <template id="empty-state-template">
-        <div class="empty-state">
-          <p>目前還沒有資料，先新增第一筆訓練，或用「載入示範資料」快速看看功能。</p>
-        </div>
-      </template>
+    <template id="empty-state-template">
+      <div class="empty-state">
+        <p>目前還沒有資料，先新增一筆訓練，或用「載入示範資料」快速體驗。</p>
+      </div>
+    </template>
 
-      <nav class="mobile-dock" aria-label="手機功能選單">
-        <button class="dock-tab active" type="button" data-view-target="overview">總覽</button>
-        <button class="dock-tab" type="button" data-view-target="log">記錄</button>
-        <button class="dock-tab" type="button" data-view-target="calculator">計算</button>
-        <button class="dock-tab" type="button" data-view-target="research">研究</button>
-      </nav>
+    <nav class="mobile-dock" aria-label="手機功能選單">
+      <button class="dock-tab active" type="button" data-view-target="calculator">計算機</button>
+      <button class="dock-tab" type="button" data-view-target="overview">總覽</button>
+      <button class="dock-tab" type="button" data-view-target="log">記錄</button>
+      <button class="dock-tab" type="button" data-view-target="research">研究</button>
+    </nav>
 
     <script type="module" src="./app.js"></script>
   </body>

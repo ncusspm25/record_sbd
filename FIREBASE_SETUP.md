@@ -1,30 +1,22 @@
-# Firebase 設定步驟
+# Firebase 設定說明
 
-SBD Lab 已內建 Google 登入 + Firebase Firestore 雲端同步。
-完成以下步驟後，即可在不同手機 / 電腦用同一帳號存取訓練資料。
-
----
+SBD Lab 可以像你的記帳專案一樣，使用 Google 登入加上 Firebase Firestore 做雲端同步。
 
 ## 1. 建立 Firebase 專案
 
-前往 Firebase Console：https://console.firebase.google.com/
+到 Firebase Console 建立一個新專案：
 
-點「新增專案」，命名後建立。
+```text
+https://console.firebase.google.com/
+```
 
----
+## 2. 建立 Web App
 
-## 2. 新增 Web App
+在專案內新增 Web App，拿到 `firebaseConfig`。
 
-在專案首頁：
-1. 點「新增應用程式」→ 選「Web」
-2. 為 app 命名，不需勾選 Firebase Hosting
-3. 複製出現的 `firebaseConfig` 物件
+## 3. 填入 `firebase-config.js`
 
----
-
-## 3. 填入設定
-
-把取得的設定貼到 `firebase-config.js`，取代所有 `YOUR_...` 佔位符：
+把 [firebase-config.js](./firebase-config.js) 裡的 `YOUR_...` 改成你自己的設定：
 
 ```js
 export const firebaseConfig = {
@@ -37,83 +29,67 @@ export const firebaseConfig = {
 };
 ```
 
----
-
 ## 4. 啟用 Google 登入
 
 在 Firebase Console：
-1. 左側選「Authentication」→「Sign-in method」
-2. 啟用「Google」提供者
-3. 填入支援 email（你的 Gmail）→「儲存」
 
----
+1. 打開 `Authentication`
+2. 進入 `Sign-in method`
+3. 啟用 `Google`
 
 ## 5. 加入授權網域
 
-同樣在 Authentication 設定：
-1. 切換到「Authorized domains」
-2. 確認已有 `ncusspm25.github.io`（GitHub Pages 網址）
-3. 如有需要也可加 `localhost`
+在 Authentication 的授權網域中加入：
 
----
+```text
+ncusspm25.github.io
+```
+
+如果你要本機測試，也請保留：
+
+```text
+localhost
+```
 
 ## 6. 建立 Firestore Database
 
-1. 左側選「Firestore Database」→「建立資料庫」
-2. 選「Production mode」
-3. 選離你近的 region（例如 asia-east1 台灣/香港）
+在 Firebase Console：
 
----
+1. 打開 `Firestore Database`
+2. 建立資料庫
+3. 建議選擇離台灣較近的區域
 
-## 7. 設定 Security Rules
+## 7. 設定 Firestore Rules
 
-在 Firestore → Rules，貼上 `firestore.rules` 的內容：
+把 [firestore.rules](./firestore.rules) 的內容貼到 Firestore Rules 並發布。
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/sbd-entries/{entryId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /users/{userId}/sbd-profile/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-```
+規則會限制成：
 
----
+- 只有登入使用者能讀寫自己的訓練資料
+- 其他路徑全部拒絕
 
 ## 8. 推到 GitHub Pages
 
-```bash
+```powershell
 cd d:\AI_dev\SBD
 git add .
-git commit -m "Add Firebase auth and Firestore sync"
+git commit -m "Configure Firebase sync"
 git push
 ```
 
-幾分鐘後網站更新：https://ncusspm25.github.io/record_sbd/
+網站網址：
 
----
+```text
+https://ncusspm25.github.io/record_sbd/
+```
 
-## 9. 第一次使用
+## 9. 同步邏輯
 
-1. 打開網站 → 切到「總覽」→「訓練設定」面板
-2. 按「使用 Google 登入」
-3. 登入你的 Google 帳號
-4. 登入後面板顯示「雲端模式」即表示成功
-5. 如有舊的本機資料，會出現「把本機資料同步到雲端」按鈕
+未登入時：
 
----
+- 資料存在瀏覽器本機
 
-## 注意事項
+登入後：
 
-- `firebase-config.js` 中的 apiKey 放在前端是正常做法，不代表資料公開
-- 真正保護資料的是 Firebase Authentication + Firestore Security Rules
-- 同一 Google 帳號在任何裝置都能同步訓練記錄
-- 未登入時退回本機模式，資料仍在 localStorage 可正常使用
+- 資料同步到 `users/{uid}/sbd-entries`
+- 個人設定同步到 `users/{uid}/sbd-profile/data`

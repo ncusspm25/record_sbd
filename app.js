@@ -6,7 +6,7 @@ import {
   onAuthStateChanged,
   setPersistence,
   signInWithPopup,
-  signOut as firebaseSignOut,
+  signOut,
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
 import {
   collection,
@@ -20,207 +20,77 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
-const STORAGE_KEY = "sbd-lab-storage-v1";
-const RPE_VALUES = Array.from({ length: 9 }, (_, index) => 6 + index * 0.5);
+const STORAGE_KEY = "sbd-lab-storage-v2";
+const VALID_VIEWS = ["calculator", "overview", "log", "research"];
+const RPE_VALUES = Array.from({ length: 11 }, (_, index) => 5 + index * 0.5);
+const TARGET_REPS = Array.from({ length: 12 }, (_, index) => index + 1);
+
 const LIFT_META = {
-  squat: {
-    label: "深蹲",
-    longLabel: "Back Squat",
-    color: "var(--squat)",
-  },
-  bench: {
-    label: "臥推",
-    longLabel: "Bench Press",
-    color: "var(--bench)",
-  },
-  deadlift: {
-    label: "硬舉",
-    longLabel: "Deadlift",
-    color: "var(--deadlift)",
-  },
+  squat: { label: "深蹲", longLabel: "Back Squat", color: "#0e7490" },
+  bench: { label: "臥推", longLabel: "Bench Press", color: "#b9882b" },
+  deadlift: { label: "硬舉", longLabel: "Deadlift", color: "#a9472d" },
+};
+
+const PLATE_META = {
+  25: { color: "#bf3b38", label: "紅", className: "is-red", height: 112, width: 34 },
+  20: { color: "#2e66b8", label: "藍", className: "is-blue", height: 104, width: 30 },
+  15: { color: "#d9a02c", label: "黃", className: "is-yellow", height: 96, width: 28 },
+  10: { color: "#1d7a4b", label: "綠", className: "is-green", height: 86, width: 24 },
+  5: { color: "#ebe9e3", label: "白", className: "is-white", height: 72, width: 20 },
+  2.5: { color: "#252525", label: "黑", className: "is-black", height: 60, width: 16 },
+  1.25: { color: "#bdc3c8", label: "銀", className: "is-silver", height: 50, width: 12 },
 };
 
 const RESEARCH_SOURCES = [
   {
-    title: "Autoregulated resistance training for maximal strength enhancement: A systematic review and network meta-analysis",
+    title: "Autoregulated resistance training for maximal strength enhancement",
     date: "2025-10",
     journal: "Journal of Exercise Science & Fitness",
-    summary:
-      "2025 年的網絡統合分析比較了 APRE、RPE 與 VBRT 對最大肌力的效果；摘要顯示在背蹲與臥推 1RM 的排序中，APRE 第一，其次是 VBRT，再來才是 RPE。",
-    impact:
-      "因此本 app 把 RPE 定位成日常自動調整工具，而不是唯一的進度引擎；你可以用 RPE 管理當天狀態，再用 PR 與 e1RM 看中長期結果。",
+    summary: "2025 年網絡統合分析比較 APRE、RPE 與 VBRT 對最大肌力的效果，提醒我們 RPE 很有用，但不應被當成唯一依據。",
+    impact: "因此這個 app 把 RPE 放在即時調整，而把 PR 與 e1RM 放在長期進步追蹤。",
     url: "https://pubmed.ncbi.nlm.nih.gov/40791980/",
   },
   {
-    title: "Validity of Rating of Perceived Exertion Scales in Relation to Movement Velocity and Exercise Intensity During Resistance-Exercise: A Systematic Review",
+    title: "Validity of Rating of Perceived Exertion Scales During Resistance Exercise",
     date: "2024-07",
-    journal: "Journal of Strength and Conditioning Research / PubMed record",
-    summary:
-      "2024 系統性回顧指出，阻力訓練中的 RPE 與移動速度、訓練強度之間多呈中度正相關，代表 RPE 是有用訊號，但不是高精度儀器。",
-    impact:
-      "所以介面會同時顯示 RPE、e1RM、容量與 PR，而不是只顯示一個『最佳重量』。",
+    journal: "JSCR / PubMed",
+    summary: "2024 系統性回顧指出，阻力訓練中的 RPE 與訓練強度、動作速度普遍呈中度相關，適合作為實務監控工具。",
+    impact: "所以我們同時顯示重量、RPE、e1RM 與快速參考表，而不是只給單一答案。",
     url: "https://pubmed.ncbi.nlm.nih.gov/38910451/",
   },
   {
-    title: "The Predictive Validity of Individualised Load-Velocity Relationships for Predicting 1RM: A Systematic Review and Individual Participant Data Meta-analysis",
+    title: "Predictive Validity of Individualised Load-Velocity Relationships for 1RM",
     date: "2023-09",
     journal: "Sports Medicine",
-    summary:
-      "2023 的個體資料統合分析顯示，利用 load-velocity relationship 預估 1RM 的效度只有中等，而且傾向高估實際 1RM。",
-    impact:
-      "本 app 沒有把速度推估當成唯一核心，而是用更容易落地的『完成組 + RPE/RIR』去追蹤 e1RM，並在 UI 中強調它是趨勢工具，不是比賽判定。",
+    summary: "2023 個體資料統合分析指出，利用速度關係估算 1RM 的效度只有中等，且常有高估傾向。",
+    impact: "因此本工具以完成組加 RPE 估算 e1RM，並明確標示它是推算，不是實測。",
     url: "https://pubmed.ncbi.nlm.nih.gov/37493929/",
   },
   {
-    title: "The efficacy of repetitions-in-reserve vs. traditional percentage-based resistance training",
+    title: "The efficacy of repetitions-in-reserve vs. traditional percentage-based training",
     date: "2021-10",
     journal: "Sport Sciences for Health",
-    summary:
-      "此研究指出 RIR 整體上有可接受的準確度與中等到良好的可靠度，但在硬舉 6 次與 9 次等較高次數時，準確度較不理想。",
-    impact:
-      "因此表單與計算機都會對硬舉高次數給出提醒，避免把高 reps deadlift 的 RPE 當成過度精準的調整工具。",
+    summary: "研究顯示 RIR 整體準確度可接受，但硬舉高次數時準確度較不穩定。",
+    impact: "所以當主項是硬舉且次數偏高時，介面會主動提醒保守看待 RPE。",
     url: "https://link.springer.com/article/10.1007/s11332-021-00837-5",
   },
   {
-    title: "Self-Rated Accuracy of Rating of Perceived Exertion-Based Load Prescription in Powerlifters",
+    title: "Self-Rated Accuracy of RPE-Based Load Prescription in Powerlifters",
     date: "2017-10",
     journal: "Journal of Strength and Conditioning Research",
-    summary:
-      "這篇針對 powerlifters 的研究直接檢驗了用 RIR-based RPE 在深蹲、臥推、硬舉選重的能力，支持其在力量訓練中的實務應用。",
-    impact:
-      "因此 app 預設提供 0.5 級距的 RPE 輸入與以主項分類的歷史追蹤，貼近 powerlifting 實務。",
+    summary: "針對 powerlifters 的研究支持用 RIR-based RPE 進行實務選重。",
+    impact: "這也是本 app 以深蹲、臥推、硬舉為核心並採用半級距 RPE 的原因。",
     url: "https://pubmed.ncbi.nlm.nih.gov/28933716/",
-  },
-  {
-    title: "Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve",
-    date: "2016-01",
-    journal: "Journal of Strength and Conditioning Research",
-    summary:
-      "2016 年的研究建立並檢驗了以 RIR 為錨點的阻力訓練專用 RPE 架構，成為目前力量訓練中最常見的 RPE ↔ RIR 實務基礎。",
-    impact:
-      "本 app 的換算採用 RPE 10 = 0 RIR、RPE 9 = 1 RIR、0.5 RPE = 0.5 RIR 的邏輯，方便直接安排單組與工作組。",
-    url: "https://pubmed.ncbi.nlm.nih.gov/26595188/",
   },
 ];
 
 const DEMO_ENTRIES = [
-  {
-    id: "demo-1",
-    date: "2026-04-03",
-    lift: "squat",
-    variant: "Comp",
-    block: "Strength 1",
-    weight: 180,
-    reps: 3,
-    sets: 3,
-    rpe: 8,
-    bodyweight: 84.2,
-    notes: "腰帶，狀態穩定",
-  },
-  {
-    id: "demo-2",
-    date: "2026-04-05",
-    lift: "bench",
-    variant: "Paused",
-    block: "Strength 1",
-    weight: 122.5,
-    reps: 4,
-    sets: 4,
-    rpe: 8.5,
-    bodyweight: 84.1,
-    notes: "停頓清楚，最後一組略慢",
-  },
-  {
-    id: "demo-3",
-    date: "2026-04-07",
-    lift: "deadlift",
-    variant: "Comp",
-    block: "Strength 1",
-    weight: 215,
-    reps: 3,
-    sets: 3,
-    rpe: 8,
-    bodyweight: 84.5,
-    notes: "握力正常",
-  },
-  {
-    id: "demo-4",
-    date: "2026-04-10",
-    lift: "squat",
-    variant: "Comp",
-    block: "Strength 2",
-    weight: 190,
-    reps: 2,
-    sets: 4,
-    rpe: 8.5,
-    bodyweight: 84.4,
-    notes: "前兩組速度很好",
-  },
-  {
-    id: "demo-5",
-    date: "2026-04-13",
-    lift: "bench",
-    variant: "Comp",
-    block: "Strength 2",
-    weight: 130,
-    reps: 3,
-    sets: 3,
-    rpe: 9,
-    bodyweight: 84.3,
-    notes: "接胸位置穩定",
-  },
-  {
-    id: "demo-6",
-    date: "2026-04-16",
-    lift: "deadlift",
-    variant: "Comp",
-    block: "Strength 2",
-    weight: 225,
-    reps: 2,
-    sets: 3,
-    rpe: 8.5,
-    bodyweight: 84.6,
-    notes: "站起速度比上週好",
-  },
-  {
-    id: "demo-7",
-    date: "2026-04-18",
-    lift: "squat",
-    variant: "Comp",
-    block: "Peak",
-    weight: 205,
-    reps: 1,
-    sets: 1,
-    rpe: 9,
-    bodyweight: 84.2,
-    notes: "近期重量 PR",
-  },
-  {
-    id: "demo-8",
-    date: "2026-04-20",
-    lift: "bench",
-    variant: "Comp",
-    block: "Peak",
-    weight: 137.5,
-    reps: 1,
-    sets: 1,
-    rpe: 9,
-    bodyweight: 84.0,
-    notes: "近期單次 PR",
-  },
-  {
-    id: "demo-9",
-    date: "2026-04-21",
-    lift: "deadlift",
-    variant: "Comp",
-    block: "Peak",
-    weight: 240,
-    reps: 1,
-    sets: 1,
-    rpe: 9.5,
-    bodyweight: 84.1,
-    notes: "接近近期上限",
-  },
+  { id: "demo-1", date: "2026-04-03", lift: "squat", variant: "Comp", block: "Strength", weight: 180, reps: 3, sets: 3, rpe: 8, bodyweight: 84.2, notes: "腰帶，節奏穩定" },
+  { id: "demo-2", date: "2026-04-05", lift: "bench", variant: "Paused", block: "Strength", weight: 122.5, reps: 4, sets: 4, rpe: 8.5, bodyweight: 84.1, notes: "停頓清楚" },
+  { id: "demo-3", date: "2026-04-07", lift: "deadlift", variant: "Comp", block: "Strength", weight: 215, reps: 3, sets: 3, rpe: 8, bodyweight: 84.5, notes: "握力正常" },
+  { id: "demo-4", date: "2026-04-18", lift: "squat", variant: "Comp", block: "Peak", weight: 205, reps: 1, sets: 1, rpe: 9, bodyweight: 84.2, notes: "近期重量 PR" },
+  { id: "demo-5", date: "2026-04-20", lift: "bench", variant: "Comp", block: "Peak", weight: 137.5, reps: 1, sets: 1, rpe: 9, bodyweight: 84.0, notes: "近期單次 PR" },
+  { id: "demo-6", date: "2026-04-21", lift: "deadlift", variant: "Comp", block: "Peak", weight: 240, reps: 1, sets: 1, rpe: 9.5, bodyweight: 84.1, notes: "接近高峰狀態" },
 ];
 
 const DEFAULT_STATE = {
@@ -236,16 +106,15 @@ const DEFAULT_STATE = {
   entries: [],
 };
 
-// Firebase runtime state
-const fb = {
+const syncState = {
+  ready: false,
   app: null,
   auth: null,
   db: null,
   provider: null,
   user: null,
-  syncMode: "initializing", // initializing | config-missing | signed-out | signing-in | syncing | cloud | error
-  syncError: "",
-  ready: false,
+  mode: "initializing",
+  error: "",
   unsubscribeEntries: null,
 };
 
@@ -257,6 +126,7 @@ const elements = {
   formula: document.querySelector("#formula"),
   rounding: document.querySelector("#rounding"),
   barbellWeight: document.querySelector("#barbell-weight"),
+  storageNote: document.querySelector("#storage-note"),
   headlineStats: document.querySelector("#headline-stats"),
   entryForm: document.querySelector("#entry-form"),
   entryDate: document.querySelector("#entry-date"),
@@ -275,13 +145,14 @@ const elements = {
   estimateWeight: document.querySelector("#estimate-weight"),
   estimateReps: document.querySelector("#estimate-reps"),
   estimateRpe: document.querySelector("#estimate-rpe"),
-  estimateOutput: document.querySelector("#estimate-output"),
   targetReps: document.querySelector("#target-reps"),
   targetRpe: document.querySelector("#target-rpe"),
+  estimateOutput: document.querySelector("#estimate-output"),
   targetOutput: document.querySelector("#target-output"),
+  calcProjectedNumber: document.querySelector("#calc-projected-number"),
+  calcHeroMeta: document.querySelector("#calc-hero-meta"),
   plateOutput: document.querySelector("#plate-output"),
   projectionGrid: document.querySelector("#projection-grid"),
-  storageNote: document.querySelector("#storage-note"),
   liftCards: document.querySelector("#lift-cards"),
   recentPrFeed: document.querySelector("#recent-pr-feed"),
   tableBody: document.querySelector("#log-table-body"),
@@ -297,185 +168,16 @@ const elements = {
 };
 
 fillRpeSelect(elements.entryRpe, 8);
-fillRpeSelect(elements.estimateRpe, 8);
+fillRpeSelect(elements.estimateRpe, 6);
 fillRpeSelect(elements.targetRpe, 8);
-
+fillRepSelect(elements.targetReps, 12, 5);
 hydrateProfileInputs();
 setDefaultDate();
 applyActiveView();
 renderApp();
 bindEvents();
 registerServiceWorker();
-
-// Kick off Firebase in the background — doesn't block initial render
 initFirebase();
-
-// ─── Firebase ──────────────────────────────────────────────────────────────
-
-async function initFirebase() {
-  if (!isFirebaseConfigured(firebaseConfig)) {
-    fb.syncMode = "config-missing";
-    renderStorageNote();
-    return;
-  }
-
-  try {
-    fb.app = initializeApp(firebaseConfig);
-    fb.auth = getAuth(fb.app);
-    fb.db = getFirestore(fb.app);
-    fb.provider = new GoogleAuthProvider();
-    fb.provider.setCustomParameters({ prompt: "select_account" });
-
-    await setPersistence(fb.auth, browserLocalPersistence);
-
-    fb.ready = true;
-    fb.syncMode = "signed-out";
-    renderStorageNote();
-
-    onAuthStateChanged(fb.auth, (user) => {
-      if (fb.unsubscribeEntries) {
-        fb.unsubscribeEntries();
-        fb.unsubscribeEntries = null;
-      }
-
-      fb.user = user;
-
-      if (!user) {
-        fb.syncMode = "signed-out";
-        renderStorageNote();
-        return;
-      }
-
-      fb.syncMode = "syncing";
-      renderStorageNote();
-      subscribeToCloudData(user.uid);
-    });
-  } catch (error) {
-    console.error("Firebase init error:", error);
-    fb.syncMode = "error";
-    fb.syncError = String(error?.message || error);
-    renderStorageNote();
-  }
-}
-
-function subscribeToCloudData(uid) {
-  if (!fb.db) return;
-
-  // Load profile from Firestore once
-  getDoc(doc(fb.db, "users", uid, "sbd-profile", "data"))
-    .then((snap) => {
-      if (snap.exists()) {
-        state.profile = { ...DEFAULT_STATE.profile, ...snap.data() };
-        hydrateProfileInputs();
-      } else {
-        // First sign-in: push local profile to cloud
-        setDoc(doc(fb.db, "users", uid, "sbd-profile", "data"), state.profile).catch(console.error);
-      }
-    })
-    .catch(console.error);
-
-  // Subscribe to entries in real-time
-  fb.unsubscribeEntries = onSnapshot(
-    collection(fb.db, "users", uid, "sbd-entries"),
-    (snapshot) => {
-      state.entries = snapshot.docs
-        .map((d) => normalizeEntry(d.data()))
-        .filter(Boolean);
-      sortEntries();
-      persistStateLocal();
-      fb.syncMode = "cloud";
-      renderApp();
-    },
-    (error) => {
-      console.error("Firestore snapshot error:", error);
-      fb.syncMode = "error";
-      fb.syncError = String(error?.message || error);
-      renderStorageNote();
-    },
-  );
-}
-
-async function handleSignIn() {
-  if (!fb.ready || !fb.auth) {
-    return;
-  }
-  try {
-    fb.syncMode = "signing-in";
-    renderStorageNote();
-    await signInWithPopup(fb.auth, fb.provider);
-  } catch (error) {
-    console.error("Sign-in error:", error);
-    fb.syncMode = fb.user ? "cloud" : "signed-out";
-    renderStorageNote();
-  }
-}
-
-async function handleSignOut() {
-  if (!fb.auth) return;
-  try {
-    await firebaseSignOut(fb.auth);
-    // onAuthStateChanged will clean up and revert to local mode
-    // Reload state from localStorage
-    const local = loadState();
-    state.entries = local.entries;
-    state.profile = local.profile;
-    state.ui = local.ui;
-    hydrateProfileInputs();
-    renderApp();
-  } catch (error) {
-    console.error("Sign-out error:", error);
-  }
-}
-
-async function migrateLocalToCloud() {
-  if (!fb.db || !fb.user?.uid) return;
-
-  const local = loadLocalEntries();
-  if (local.length === 0) return;
-
-  const uid = fb.user.uid;
-  const BATCH_SIZE = 400;
-
-  for (let i = 0; i < local.length; i += BATCH_SIZE) {
-    const batch = writeBatch(fb.db);
-    local.slice(i, i + BATCH_SIZE).forEach((entry) => {
-      batch.set(doc(fb.db, "users", uid, "sbd-entries", entry.id), entry);
-    });
-    await batch.commit();
-  }
-
-  // onSnapshot will fire and update state
-  renderStorageNote();
-}
-
-function isCloudMode() {
-  return fb.syncMode === "cloud" || fb.syncMode === "syncing";
-}
-
-function isFirebaseConfigured(config) {
-  const required = ["apiKey", "authDomain", "projectId", "appId"];
-  return required.every((k) => {
-    const v = String(config?.[k] || "").trim();
-    return v && !v.startsWith("YOUR_");
-  });
-}
-
-async function saveEntryToCloud(entry) {
-  if (!fb.db || !fb.user?.uid) throw new Error("cloud-not-ready");
-  await setDoc(doc(fb.db, "users", fb.user.uid, "sbd-entries", entry.id), entry);
-}
-
-async function deleteEntryFromCloud(id) {
-  if (!fb.db || !fb.user?.uid) throw new Error("cloud-not-ready");
-  await deleteDoc(doc(fb.db, "users", fb.user.uid, "sbd-entries", id));
-}
-
-async function saveProfileToCloud() {
-  if (!fb.db || !fb.user?.uid) return;
-  await setDoc(doc(fb.db, "users", fb.user.uid, "sbd-profile", "data"), state.profile);
-}
-
-// ─── Event binding ──────────────────────────────────────────────────────────
 
 function bindEvents() {
   elements.profileForm.addEventListener("input", handleProfileChange);
@@ -486,34 +188,15 @@ function bindEvents() {
     element.addEventListener("input", renderEntryHint);
   });
 
-  [elements.estimateLift, elements.estimateWeight, elements.estimateReps, elements.estimateRpe].forEach((element) => {
+  [
+    elements.estimateLift,
+    elements.estimateWeight,
+    elements.estimateReps,
+    elements.estimateRpe,
+    elements.targetReps,
+    elements.targetRpe,
+  ].forEach((element) => {
     element.addEventListener("input", renderCalculators);
-  });
-
-  [elements.targetReps, elements.targetRpe].forEach((element) => {
-    element.addEventListener("input", renderCalculators);
-  });
-
-  // Target reps stepper
-  document.querySelector("#target-reps-inc")?.addEventListener("click", () => {
-    elements.targetReps.value = Math.min(12, toNumber(elements.targetReps.value) + 1);
-    renderCalculators();
-  });
-  document.querySelector("#target-reps-dec")?.addEventListener("click", () => {
-    elements.targetReps.value = Math.max(1, toNumber(elements.targetReps.value) - 1);
-    renderCalculators();
-  });
-
-  // Target RPE stepper (step through RPE_VALUES array)
-  document.querySelector("#target-rpe-inc")?.addEventListener("click", () => {
-    const idx = RPE_VALUES.indexOf(toNumber(elements.targetRpe.value));
-    if (idx < RPE_VALUES.length - 1) elements.targetRpe.value = RPE_VALUES[idx + 1];
-    renderCalculators();
-  });
-  document.querySelector("#target-rpe-dec")?.addEventListener("click", () => {
-    const idx = RPE_VALUES.indexOf(toNumber(elements.targetRpe.value));
-    if (idx > 0) elements.targetRpe.value = RPE_VALUES[idx - 1];
-    renderCalculators();
   });
 
   elements.exportJson.addEventListener("click", exportJson);
@@ -521,133 +204,11 @@ function bindEvents() {
   elements.importButton.addEventListener("click", () => elements.importFile.click());
   elements.importFile.addEventListener("change", importJson);
   elements.clearData.addEventListener("click", clearAllData);
+
   elements.viewButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      setActiveView(button.dataset.viewTarget);
-    });
+    button.addEventListener("click", () => setActiveView(button.dataset.viewTarget));
   });
 }
-
-// ─── Event handlers ─────────────────────────────────────────────────────────
-
-function handleProfileChange() {
-  state.profile.athleteName = elements.athleteName.value.trim();
-  state.profile.formula = elements.formula.value;
-  state.profile.rounding = toNumber(elements.rounding.value, 2.5);
-  state.profile.barbellWeight = toNumber(elements.barbellWeight.value, 20);
-  persistState();
-  if (isCloudMode()) {
-    saveProfileToCloud().catch(console.error);
-  }
-  renderApp();
-}
-
-async function handleEntrySubmit(event) {
-  event.preventDefault();
-
-  const entry = {
-    id: crypto.randomUUID(),
-    date: elements.entryDate.value,
-    lift: elements.entryLift.value,
-    variant: elements.entryVariant.value.trim(),
-    block: elements.entryBlock.value.trim(),
-    weight: toNumber(elements.entryWeight.value),
-    reps: toNumber(elements.entryReps.value),
-    sets: toNumber(elements.entrySets.value),
-    rpe: toNumber(elements.entryRpe.value),
-    bodyweight: elements.entryBodyweight.value ? toNumber(elements.entryBodyweight.value) : null,
-    notes: elements.entryNotes.value.trim(),
-  };
-
-  const resetForm = () => {
-    elements.entryForm.reset();
-    setDefaultDate();
-    elements.entrySets.value = 1;
-    elements.entryLift.value = "squat";
-    elements.entryRpe.value = "8";
-  };
-
-  if (isCloudMode()) {
-    try {
-      await saveEntryToCloud(entry);
-      // onSnapshot fires and updates state + re-renders
-      resetForm();
-    } catch (error) {
-      console.error("Save entry error:", error);
-    }
-  } else {
-    state.entries.push(entry);
-    sortEntries();
-    persistState();
-    resetForm();
-    renderApp();
-  }
-}
-
-async function handleLoadDemo() {
-  if (state.entries.length > 0) {
-    const shouldContinue = window.confirm("目前已有訓練資料，載入示範資料會追加在現有資料後面，是否繼續？");
-    if (!shouldContinue) return;
-  }
-
-  const newEntries = DEMO_ENTRIES.map((entry) => ({
-    ...entry,
-    id: `${entry.id}-${crypto.randomUUID()}`,
-  }));
-
-  if (isCloudMode()) {
-    const batch = writeBatch(fb.db);
-    newEntries.forEach((entry) => {
-      batch.set(doc(fb.db, "users", fb.user.uid, "sbd-entries", entry.id), entry);
-    });
-    batch.commit().catch(console.error);
-    // onSnapshot re-renders
-  } else {
-    state.entries.push(...newEntries);
-    sortEntries();
-    persistState();
-    renderApp();
-  }
-}
-
-async function handleTableAction(event) {
-  const { action, id } = event.currentTarget.dataset;
-  const index = state.entries.findIndex((entry) => entry.id === id);
-
-  if (index === -1) return;
-
-  if (action === "delete") {
-    if (isCloudMode()) {
-      await deleteEntryFromCloud(id).catch(console.error);
-      // onSnapshot re-renders
-    } else {
-      state.entries.splice(index, 1);
-      persistState();
-      renderApp();
-    }
-  }
-
-  if (action === "duplicate") {
-    const source = state.entries[index];
-    const copy = {
-      ...source,
-      id: crypto.randomUUID(),
-      date: dateInputValue(new Date()),
-    };
-
-    if (isCloudMode()) {
-      await saveEntryToCloud(copy).catch(console.error);
-      // onSnapshot re-renders
-    } else {
-      state.entries.push(copy);
-      sortEntries();
-      persistState();
-      renderApp();
-    }
-  }
-}
-
-// ─── Render ─────────────────────────────────────────────────────────────────
 
 function renderApp() {
   applyActiveView();
@@ -661,12 +222,168 @@ function renderApp() {
   renderResearch();
 }
 
+function handleProfileChange() {
+  state.profile.athleteName = elements.athleteName.value.trim();
+  state.profile.formula = elements.formula.value;
+  state.profile.rounding = toNumber(elements.rounding.value, 2.5);
+  state.profile.barbellWeight = toNumber(elements.barbellWeight.value, 20);
+  persistStateLocal();
+  if (isCloudMode()) {
+    saveProfileToCloud().catch(console.error);
+  }
+  renderApp();
+}
+
+async function handleEntrySubmit(event) {
+  event.preventDefault();
+  const entry = normalizeEntry({
+    id: crypto.randomUUID(),
+    date: elements.entryDate.value,
+    lift: elements.entryLift.value,
+    variant: elements.entryVariant.value.trim(),
+    block: elements.entryBlock.value.trim(),
+    weight: toNumber(elements.entryWeight.value),
+    reps: toNumber(elements.entryReps.value),
+    sets: toNumber(elements.entrySets.value),
+    rpe: toNumber(elements.entryRpe.value),
+    bodyweight: elements.entryBodyweight.value ? toNumber(elements.entryBodyweight.value) : null,
+    notes: elements.entryNotes.value.trim(),
+  });
+
+  if (!entry) {
+    window.alert("請確認重量、次數與 RPE 都有正確填寫。");
+    return;
+  }
+
+  if (isCloudMode()) {
+    await saveEntryToCloud(entry);
+  } else {
+    state.entries.push(entry);
+    sortEntries();
+    persistStateLocal();
+  }
+
+  resetEntryForm();
+  renderApp();
+}
+
+async function handleLoadDemo() {
+  if (state.entries.length > 0) {
+    const ok = window.confirm("目前已有資料，載入示範資料會追加進去，確定繼續嗎？");
+    if (!ok) {
+      return;
+    }
+  }
+
+  const demoEntries = DEMO_ENTRIES.map((entry) => ({
+    ...entry,
+    id: `${entry.id}-${crypto.randomUUID()}`,
+  }));
+
+  if (isCloudMode()) {
+    const batch = writeBatch(syncState.db);
+    demoEntries.forEach((entry) => {
+      batch.set(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", entry.id), entry);
+    });
+    await batch.commit();
+  } else {
+    state.entries.push(...demoEntries);
+    sortEntries();
+    persistStateLocal();
+    renderApp();
+  }
+}
+
+function resetEntryForm() {
+  elements.entryForm.reset();
+  setDefaultDate();
+  elements.entrySets.value = 1;
+  elements.entryLift.value = "squat";
+  elements.entryRpe.value = "8";
+}
+
+function renderStorageNote() {
+  const localCount = loadLocalEntries().length;
+  let html = "";
+
+  if (syncState.mode === "initializing") {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status local">同步初始化中</span>
+        <div class="storage-copy">目前先用本機模式載入，Firebase 初始化完成後會提供 Google 登入與雲端同步。</div>
+      </div>
+    `;
+  } else if (syncState.mode === "config-missing") {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status local">本機模式</span>
+        <div class="storage-copy">目前資料存在這台裝置的瀏覽器 <code>localStorage</code>。換手機、換瀏覽器或清除網站資料後不會自動跟著走。</div>
+        <div class="storage-copy">如果你要跨手機同步，請把 <code>firebase-config.js</code> 填上自己的 Firebase 設定，再登入 Google 啟用 Firestore 同步。</div>
+      </div>
+    `;
+  } else if (syncState.mode === "signed-out") {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status local">本機模式</span>
+        <div class="storage-copy">目前資料存在瀏覽器本機。登入 Google 後，可以把訓練記錄同步到你的 Firestore，在不同手機或電腦共用。</div>
+        <div class="storage-actions">
+          <button class="button primary" type="button" id="auth-sign-in-btn">登入 Google 啟用雲端</button>
+        </div>
+      </div>
+    `;
+  } else if (syncState.mode === "signing-in" || syncState.mode === "syncing") {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status cloud">雲端連線中</span>
+        <div class="storage-copy">${syncState.mode === "signing-in" ? "正在開啟 Google 登入視窗。" : "正在讀取你的 Firestore 訓練資料。"}</div>
+      </div>
+    `;
+  } else if (syncState.mode === "cloud") {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status cloud">雲端同步中</span>
+        <div class="storage-copy">你已登入 <strong>${escapeHtml((syncState.user && (syncState.user.displayName || syncState.user.email)) || "Google 帳號")}</strong>，資料會同步到你自己的 Firestore。</div>
+        <div class="storage-copy">之後只要用同一個 Google 帳號登入，換手機或換電腦都能看到同一份訓練記錄。</div>
+        <div class="storage-actions">
+          ${localCount > 0 ? `<button class="button subtle" type="button" id="auth-migrate-btn">把這台裝置的本機資料同步上雲端</button>` : ""}
+          <button class="button subtle" type="button" id="auth-sign-out-btn">登出 Google</button>
+        </div>
+      </div>
+    `;
+  } else {
+    html = `
+      <div class="storage-card">
+        <span class="storage-status error">同步錯誤</span>
+        <div class="storage-copy">雲端同步目前有問題，請先以本機模式使用。${syncState.error ? `<br><small>${escapeHtml(syncState.error)}</small>` : ""}</div>
+        <div class="storage-actions">
+          <button class="button subtle" type="button" id="auth-sign-out-btn">回到本機模式</button>
+        </div>
+      </div>
+    `;
+  }
+
+  elements.storageNote.innerHTML = html;
+  const signInButton = elements.storageNote.querySelector("#auth-sign-in-btn");
+  const signOutButton = elements.storageNote.querySelector("#auth-sign-out-btn");
+  const migrateButton = elements.storageNote.querySelector("#auth-migrate-btn");
+
+  if (signInButton) {
+    signInButton.addEventListener("click", handleSignIn);
+  }
+  if (signOutButton) {
+    signOutButton.addEventListener("click", handleSignOut);
+  }
+  if (migrateButton) {
+    migrateButton.addEventListener("click", migrateLocalToCloud);
+  }
+}
+
 function renderHeadlineStats() {
   const metrics = getHeadlineMetrics();
   elements.headlineStats.innerHTML = metrics
     .map(
       (metric) => `
-        <article class="stat-card ${metric.className}">
+        <article class="stat-card">
           <div class="stat-label">${metric.label}</div>
           <div class="stat-value">${metric.value}</div>
           <div class="stat-helper">${metric.helper}</div>
@@ -678,49 +395,51 @@ function renderHeadlineStats() {
 
 function renderEntryHint() {
   const lift = elements.entryLift.value;
-  const reps = toNumber(elements.entryReps.value);
-  const rpe = toNumber(elements.entryRpe.value);
-  const rir = formatNumber(rirFromRpe(rpe), 1);
-
-  let message = `${LIFT_META[lift].label} 目前設定約為 ${rir} RIR。`;
+  const reps = toNumber(elements.entryReps.value, 1);
+  const rpe = toNumber(elements.entryRpe.value, 8);
+  const rir = rirFromRpe(rpe);
+  let text = `${LIFT_META[lift].label} 目前設定約為 ${formatNumber(rir, 1)} RIR。`;
 
   if (lift === "deadlift" && reps >= 6) {
-    message += " 研究顯示硬舉在較高次數下的 RIR/RPE 準確度較不穩，建議搭配影片、速度或保守加重。";
+    text += " 硬舉高次數的 RPE 準確度較不穩，建議保守調整。";
   } else if (rpe >= 9.5) {
-    message += " 這已非常接近極限，若當週主軸不是測單，建議留一點緩衝。";
+    text += " 這已很接近極限，若不是測單日，建議保留一點緩衝。";
   } else {
-    message += " 這適合作為日常自動調整的工作組紀錄。";
+    text += " 這樣的設定很適合作為日常訓練工作組。";
   }
 
-  elements.entryHint.textContent = message;
+  elements.entryHint.textContent = text;
 }
 
 function renderCalculators() {
-  const estimateWeight = toNumber(elements.estimateWeight.value);
-  const estimateReps = toNumber(elements.estimateReps.value);
-  const estimateRpe = toNumber(elements.estimateRpe.value);
-  const estimateLift = elements.estimateLift.value;
-  const estimateRir = rirFromRpe(estimateRpe);
-  const estimateOneRm = estimate1RM(estimateWeight, estimateReps, estimateRpe, state.profile.formula);
-  const estimatePercent = estimateOneRm ? (estimateWeight / estimateOneRm) * 100 : 0;
-  const targetRir = rirFromRpe(toNumber(elements.targetRpe.value));
-  const targetReps = toNumber(elements.targetReps.value);
-  const targetRpe = toNumber(elements.targetRpe.value);
-  const suggestedWeight = estimateOneRm
-    ? prescribeLoad(estimateOneRm, targetReps, targetRpe, state.profile.formula, state.profile.rounding)
+  const lift = elements.estimateLift.value;
+  const weight = toNumber(elements.estimateWeight.value);
+  const reps = Math.max(1, toNumber(elements.estimateReps.value, 1));
+  const rpe = toNumber(elements.estimateRpe.value, 6);
+  const targetReps = Math.max(1, toNumber(elements.targetReps.value, 1));
+  const targetRpe = toNumber(elements.targetRpe.value, 8);
+  const e1rm = estimate1RM(weight, reps, rpe, state.profile.formula);
+  const intensity = e1rm ? (weight / e1rm) * 100 : 0;
+  const suggestedWeight = e1rm
+    ? prescribeLoad(e1rm, targetReps, targetRpe, state.profile.formula, state.profile.rounding)
     : 0;
-  const suggestedPercent = estimateOneRm ? (suggestedWeight / estimateOneRm) * 100 : 0;
+  const targetIntensity = e1rm ? (suggestedWeight / e1rm) * 100 : 0;
+
+  elements.calcProjectedNumber.textContent = e1rm ? formatNumber(suggestedWeight, 1) : "0";
+  elements.calcHeroMeta.textContent = e1rm
+    ? `${LIFT_META[lift].label} · e1RM ${formatKg(e1rm)} · 約 ${formatNumber(targetIntensity, 1)}% e1RM`
+    : "先輸入已完成組以建立推算基準";
 
   elements.estimateOutput.innerHTML = [
     {
       label: "估算 e1RM",
-      value: `${formatKg(estimateOneRm)}`,
-      copy: `以 ${estimateWeight} kg x ${estimateReps} @ RPE ${estimateRpe} 估算；約等於 ${estimateReps + estimateRir} 次到力竭。`,
+      value: formatKg(e1rm),
+      copy: `根據 ${formatKg(weight)} x ${reps} @ RPE ${rpe} 推算，約等於 ${reps + rirFromRpe(rpe)} 次到力竭。`,
     },
     {
-      label: "相對強度",
-      value: `${formatNumber(estimatePercent, 1)}%`,
-      copy: `${LIFT_META[estimateLift].label} 這一組大約落在 ${formatNumber(estimatePercent, 1)}% e1RM。`,
+      label: "完成組強度",
+      value: `${formatNumber(intensity, 1)}%`,
+      copy: `這一組大約落在 ${formatNumber(intensity, 1)}% e1RM。`,
     },
   ]
     .map(renderResultCard)
@@ -729,55 +448,162 @@ function renderCalculators() {
   elements.targetOutput.innerHTML = [
     {
       label: "建議重量",
-      value: estimateOneRm ? formatKg(suggestedWeight) : "請先輸入",
-      copy: estimateOneRm
-        ? `以 ${LIFT_META[estimateLift].label} 的基準組推算，${targetReps} reps @ RPE ${targetRpe} 約為 ${formatNumber(suggestedPercent, 1)}% e1RM。`
-        : "先在左邊輸入你剛做完的一組，例如 120 x 3 @ 6，系統就能反推下一組重量。",
+      value: e1rm ? formatKg(suggestedWeight) : "請先輸入",
+      copy: e1rm
+        ? `${targetReps} 下 @ RPE ${targetRpe} 約為 ${formatNumber(targetIntensity, 1)}% e1RM。`
+        : "先輸入已完成組，系統才會知道你當天的推算基準。",
     },
     {
-      label: "保留次數",
-      value: `${formatNumber(targetRir, 1)} RIR`,
-      copy: estimateLift === "deadlift" && targetReps >= 6
-        ? "硬舉高次數的 RPE 可靠度相對差，建議保守看待。"
-        : "RPE 換算使用 RPE 10 = 0 RIR 的標準邏輯。",
+      label: "目標保留次數",
+      value: `${formatNumber(rirFromRpe(targetRpe), 1)} RIR`,
+      copy:
+        lift === "deadlift" && targetReps >= 6
+          ? "硬舉高次數的 RPE 變異較大，建議搭配速度或影片判斷。"
+          : "這個數值依 RPE 10 = 0 RIR 的標準邏輯換算。",
     },
   ]
     .map(renderResultCard)
     .join("");
 
   renderPlateBreakdown(suggestedWeight);
-  renderProjectionGrid(estimateLift, estimateOneRm);
+  renderProjectionGrid(lift, e1rm, targetReps, targetRpe);
+}
 
-  // Update dark hero display
-  const heroWeightEl = document.querySelector("#calc-projected-num");
-  const heroE1rmEl = document.querySelector("#calc-e1rm-line");
-  if (heroWeightEl) {
-    heroWeightEl.textContent = estimateOneRm
-      ? (suggestedWeight % 1 === 0 ? String(suggestedWeight) : suggestedWeight.toFixed(1))
-      : "—";
-  }
-  if (heroE1rmEl) {
-    heroE1rmEl.textContent = estimateOneRm ? `e1RM : ${Math.round(estimateOneRm)}` : "e1RM : —";
+function renderResultCard(result) {
+  return `
+    <div class="result-card">
+      <div class="result-label">${result.label}</div>
+      <div class="result-value">${result.value}</div>
+      <div class="result-copy">${result.copy}</div>
+    </div>
+  `;
+}
+
+function renderPlateBreakdown(targetWeight) {
+  if (!targetWeight) {
+    elements.plateOutput.innerHTML = `
+      <div class="empty-state">
+        <p>先輸入已完成組與目標組條件，這裡就會顯示總重量與彩色槓片配置。</p>
+      </div>
+    `;
+    return;
   }
 
-  // Sync stepper displays
-  const repsDisp = document.querySelector("#target-reps-display");
-  const rpeDisp = document.querySelector("#target-rpe-display");
-  if (repsDisp) repsDisp.textContent = elements.targetReps.value;
-  if (rpeDisp) rpeDisp.textContent = elements.targetRpe.value;
+  const breakdown = buildPlateBreakdown(targetWeight, state.profile.barbellWeight);
+  const leftStack = renderPlateStack(breakdown.plates, "left");
+  const rightStack = renderPlateStack(breakdown.plates, "right");
+  const legend = breakdown.plates.length
+    ? breakdown.plates
+        .map((plate) => {
+          const meta = PLATE_META[plate.size];
+          return `
+            <div class="plate-legend-item">
+              <div><span class="legend-dot" style="background:${meta.color};"></span>${plate.size} kg ${meta.label}槓片</div>
+              <div class="muted">每邊 x ${plate.count}</div>
+            </div>
+          `;
+        })
+        .join("")
+    : `
+      <div class="plate-legend-item">
+        <div>目前僅空槓</div>
+        <div class="muted">${formatKg(state.profile.barbellWeight)}</div>
+      </div>
+    `;
+
+  elements.plateOutput.innerHTML = `
+    <div class="plate-stage">
+      <div class="plate-header">
+        <div>
+          <div class="result-label">總重量</div>
+          <div class="plate-total">${formatKg(targetWeight)}</div>
+          <div class="plate-subcopy">以 ${formatKg(state.profile.barbellWeight)} 槓鈴計算，每邊加重 ${formatKg(breakdown.perSide)}。</div>
+        </div>
+        <div class="plate-subcopy">${breakdown.remaining > 0 ? `仍有 ${formatKg(breakdown.remaining * 2)} 無法完整拆分，建議調整進位。` : "使用常見公斤槓片可完整拆分。"}</div>
+      </div>
+      <div class="barbell-wrap">
+        <div class="barbell">
+          <div class="barbell-shaft"></div>
+          <div class="sleeve left"></div>
+          <div class="sleeve right"></div>
+          <div class="plate-stack left">${leftStack}</div>
+          <div class="barbell-center"></div>
+          <div class="plate-stack right">${rightStack}</div>
+        </div>
+      </div>
+      <div class="plate-legend">${legend}</div>
+    </div>
+  `;
+}
+
+function renderPlateStack(plates, side) {
+  const rendered = [];
+  plates.forEach((plate) => {
+    const meta = PLATE_META[plate.size];
+    for (let index = 0; index < plate.count; index += 1) {
+      rendered.push(`
+        <div
+          class="plate ${meta.className}"
+          style="width:${meta.width}px;height:${meta.height}px;background:${meta.color};"
+          aria-label="${side} ${plate.size} 公斤槓片"
+        >
+          <span>${plate.size}</span>
+        </div>
+      `);
+    }
+  });
+  return rendered.join("");
+}
+
+function renderProjectionGrid(lift, oneRm, targetReps, targetRpe) {
+  if (!oneRm) {
+    elements.projectionGrid.innerHTML = `
+      <div class="empty-state">
+        <p>先輸入已完成組，快速參考表就會列出 1 到 12 下、RPE 5.0 到 10.0 的估計重量。</p>
+      </div>
+    `;
+    return;
+  }
+
+  elements.projectionGrid.innerHTML = `
+    <div class="projection-scroll">
+      <table class="projection-table">
+        <thead>
+          <tr>
+            <th>${LIFT_META[lift].label}</th>
+            ${RPE_VALUES.map((rpe) => `<th class="${rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : ""}">RPE ${formatNumber(rpe, 1)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${TARGET_REPS.map((reps) => {
+            return `
+              <tr>
+                <td>${reps} 下</td>
+                ${RPE_VALUES.map((rpe) => {
+                  const weight = prescribeLoad(oneRm, reps, rpe, state.profile.formula, state.profile.rounding);
+                  const className = `${rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : ""}${reps === targetReps && rpe === targetRpe ? " target-cell" : ""}`;
+                  return `<td class="${className.trim()}">${formatKg(weight)}</td>`;
+                }).join("")}
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint">這張表以你目前輸入的已完成組 e1RM 作為基準。標亮格是你現在選定的目標組。</p>
+  `;
 }
 
 function renderLiftCards() {
-  const cards = Object.keys(LIFT_META).map((lift) => renderLiftCard(lift));
-  elements.liftCards.innerHTML = cards.join("");
+  elements.liftCards.innerHTML = Object.keys(LIFT_META)
+    .map((lift) => renderLiftCard(lift))
+    .join("");
 }
 
 function renderLiftCard(lift) {
   const stats = getLiftStats(lift);
-  const accentClass = lift;
-
   return `
-    <article class="lift-card ${accentClass}">
+    <article class="lift-card ${lift}">
       <div class="lift-card-header">
         <div>
           <div class="lift-name">${LIFT_META[lift].label}</div>
@@ -800,23 +626,19 @@ function renderLiftCard(lift) {
           <span class="chip-text">最佳單次</span>
         </div>
       </div>
-      <div class="trend-chart">
-        ${renderTrendChart(stats.timeline, lift)}
-      </div>
-      <div class="trend-label">${stats.timeline.length > 1 ? `最近一次 ${formatDate(stats.latestDate)} e1RM ${formatKg(stats.latestE1RM)}` : "新增更多訓練後會顯示走勢。"}</div>
+      <div class="trend-chart">${renderTrendChart(stats.timeline, lift)}</div>
+      <div class="trend-label">${stats.latestDate ? `${formatDate(stats.latestDate)} · e1RM ${formatKg(stats.latestE1RM)}` : "新增訓練後會顯示走勢。"}</div>
     </article>
   `;
 }
 
 function renderRecentPrs() {
-  const recentPrs = getRecentPrs();
-
-  if (recentPrs.length === 0) {
+  const items = getRecentPrs();
+  if (items.length === 0) {
     elements.recentPrFeed.innerHTML = elements.emptyTemplate.innerHTML;
     return;
   }
-
-  elements.recentPrFeed.innerHTML = recentPrs
+  elements.recentPrFeed.innerHTML = items
     .map(
       (item) => `
         <article class="feed-item">
@@ -829,18 +651,13 @@ function renderRecentPrs() {
 }
 
 function renderTable() {
-  const enrichedEntries = getEnrichedEntries();
-
-  if (enrichedEntries.length === 0) {
-    elements.tableBody.innerHTML = `
-      <tr>
-        <td colspan="8">${elements.emptyTemplate.innerHTML}</td>
-      </tr>
-    `;
+  const entries = getEnrichedEntries();
+  if (entries.length === 0) {
+    elements.tableBody.innerHTML = `<tr><td colspan="8">${elements.emptyTemplate.innerHTML}</td></tr>`;
     return;
   }
 
-  elements.tableBody.innerHTML = enrichedEntries
+  elements.tableBody.innerHTML = entries
     .slice()
     .reverse()
     .map(
@@ -855,13 +672,10 @@ function renderTable() {
             ${formatKg(entry.weight)} x ${entry.reps} x ${entry.sets}
             ${entry.block ? `<span class="log-meta">${escapeHtml(entry.block)}</span>` : ""}
           </td>
-          <td>RPE ${entry.rpe}<span class="log-meta">${formatNumber(entry.rir, 1)} RIR</span></td>
+          <td>RPE ${formatNumber(entry.rpe, 1)}<span class="log-meta">${formatNumber(entry.rir, 1)} RIR</span></td>
           <td>${formatKg(entry.e1rm)}<span class="log-meta">${formatNumber(entry.intensity, 1)}% e1RM</span></td>
           <td>${formatKg(entry.volume)}</td>
-          <td>
-            ${entry.bodyweight ? `<span class="log-meta">BW ${formatKg(entry.bodyweight)}</span>` : ""}
-            ${entry.notes ? `<span class="log-notes">${escapeHtml(entry.notes)}</span>` : `<span class="log-notes">-</span>`}
-          </td>
+          <td>${entry.notes ? `<span class="log-notes">${escapeHtml(entry.notes)}</span>` : `<span class="log-notes">-</span>`}</td>
           <td>
             <div class="action-inline">
               <button class="icon-button" type="button" data-action="duplicate" data-id="${entry.id}">複製</button>
@@ -894,255 +708,38 @@ function renderResearch() {
   ).join("");
 }
 
-function renderPlateBreakdown(targetWeight) {
-  if (!targetWeight) {
-    elements.plateOutput.innerHTML = `
-      <div class="empty-state">
-        <p>先輸入上方基準組與你想做的 reps、RPE，系統就會算出建議重量與槓片配置。</p>
-      </div>
-    `;
+async function handleTableAction(event) {
+  const { action, id } = event.currentTarget.dataset;
+  if (action === "duplicate") {
+    const source = state.entries.find((entry) => entry.id === id);
+    if (!source) {
+      return;
+    }
+    const duplicated = { ...source, id: crypto.randomUUID(), date: dateInputValue(new Date()) };
+    if (isCloudMode()) {
+      await saveEntryToCloud(duplicated);
+    } else {
+      state.entries.push(duplicated);
+      sortEntries();
+      persistStateLocal();
+      renderApp();
+    }
     return;
   }
 
-  const breakdown = buildPlateBreakdown(targetWeight, state.profile.barbellWeight);
-
-  const chips = breakdown.plates.length
-    ? breakdown.plates
-        .map(
-          (plate) => `
-            <div class="plate-chip">
-              <span class="chip-number">${plate.size} kg x ${plate.count}</span>
-              <span class="chip-text">每邊</span>
-            </div>
-          `,
-        )
-        .join("")
-    : `<div class="plate-chip"><span class="chip-number">僅空槓</span><span class="chip-text">${formatKg(state.profile.barbellWeight)}</span></div>`;
-
-  elements.plateOutput.innerHTML = `
-    <div class="result-card">
-      <div class="result-label">總重量</div>
-      <div class="result-value">${formatKg(targetWeight)}</div>
-      <div class="result-copy">以 ${formatKg(state.profile.barbellWeight)} 槓鈴計算，每邊需加重 ${formatKg(breakdown.perSide)}。</div>
-    </div>
-    <div class="plate-row" style="margin-top: 12px;">${chips}</div>
-    ${
-      breakdown.remaining > 0
-        ? `<p class="form-hint">仍有 ${formatKg(breakdown.remaining * 2)} 無法用常見公斤槓片精準拆分，建議調整進位設定或可用槓片。</p>`
-        : ""
+  if (action === "delete") {
+    if (isCloudMode()) {
+      await deleteEntryFromCloud(id);
+    } else {
+      state.entries = state.entries.filter((entry) => entry.id !== id);
+      persistStateLocal();
+      renderApp();
     }
-  `;
-}
-
-function renderResultCard(result) {
-  return `
-    <div class="result-card">
-      <div class="result-label">${result.label}</div>
-      <div class="result-value">${result.value}</div>
-      <div class="result-copy">${result.copy}</div>
-    </div>
-  `;
-}
-
-function renderTrendChart(points, lift) {
-  if (points.length === 0) {
-    return `
-      <svg class="trend-svg" viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
-        <rect x="0" y="0" width="320" height="120" rx="12" fill="rgba(255,255,255,0.45)" />
-        <text x="20" y="66" fill="#5f6b7d" font-size="14">尚無資料</text>
-      </svg>
-    `;
   }
-
-  if (points.length === 1) {
-    return `
-      <svg class="trend-svg" viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
-        <rect x="0" y="0" width="320" height="120" rx="12" fill="rgba(255,255,255,0.45)" />
-        <circle cx="160" cy="58" r="6" fill="${LIFT_META[lift].color}" />
-      </svg>
-    `;
-  }
-
-  const width = 320;
-  const height = 120;
-  const padding = 12;
-  const values = points.map((point) => point.e1rm);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const coords = points.map((point, index) => {
-    const x = padding + (index * (width - padding * 2)) / (points.length - 1);
-    const y = height - padding - ((point.e1rm - min) / range) * (height - padding * 2);
-    return `${x},${y}`;
-  });
-
-  return `
-    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="fill-${lift}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="${resolveCssColor(lift)}" stop-opacity="0.28"></stop>
-          <stop offset="100%" stop-color="${resolveCssColor(lift)}" stop-opacity="0"></stop>
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="${width}" height="${height}" rx="14" fill="rgba(255,255,255,0.5)" />
-      <polyline fill="none" stroke="${resolveCssColor(lift)}" stroke-width="4" points="${coords.join(" ")}" />
-      ${coords
-        .map((coordinate) => {
-          const [x, y] = coordinate.split(",");
-          return `<circle cx="${x}" cy="${y}" r="4" fill="${resolveCssColor(lift)}"></circle>`;
-        })
-        .join("")}
-    </svg>
-  `;
 }
-
-function renderStorageNote() {
-  const { syncMode, user, syncError } = fb;
-  let html = "";
-
-  switch (syncMode) {
-    case "initializing":
-      html = `
-        <div class="storage-card">
-          <p class="storage-copy">正在初始化…</p>
-        </div>
-      `;
-      break;
-
-    case "config-missing":
-      html = `
-        <div class="storage-card">
-          <div class="result-label">本機模式</div>
-          <p class="storage-copy">
-            資料存在瀏覽器 <code>localStorage</code>。如需跨裝置同步，請先建立 Firebase 專案並填入 <code>firebase-config.js</code>，詳見 <code>FIREBASE_SETUP.md</code>。
-          </p>
-        </div>
-      `;
-      break;
-
-    case "signed-out":
-      html = `
-        <div class="storage-card">
-          <div class="result-label">本機模式</div>
-          <p class="storage-copy">
-            資料存在瀏覽器 <code>localStorage</code>，換裝置或清除資料後不保留。
-            用 Google 登入後可跨手機自動同步。
-          </p>
-          <button class="button subtle auth-action-btn" id="auth-sign-in-btn" type="button">使用 Google 登入</button>
-        </div>
-      `;
-      break;
-
-    case "signing-in":
-    case "syncing":
-      html = `
-        <div class="storage-card">
-          <p class="storage-copy sync-pending">${syncMode === "signing-in" ? "登入中…" : "連接 Firestore…"}</p>
-        </div>
-      `;
-      break;
-
-    case "cloud": {
-      const localCount = loadLocalEntries().length;
-      html = `
-        <div class="storage-card cloud-mode">
-          <div class="result-label sync-badge-cloud">雲端模式</div>
-          <p class="storage-copy">
-            已登入：<strong>${escapeHtml(user?.displayName || "")}</strong>
-            <br>資料自動同步到 Firebase，跨手機共用。
-          </p>
-          ${localCount > 0 ? `
-            <button class="button subtle auth-action-btn" id="auth-migrate-btn" type="button">
-              把本機 ${localCount} 筆資料同步到雲端
-            </button>
-          ` : ""}
-          <button class="button subtle auth-action-btn" id="auth-sign-out-btn" type="button">登出</button>
-        </div>
-      `;
-      break;
-    }
-
-    case "error":
-      html = `
-        <div class="storage-card error-mode">
-          <div class="result-label sync-badge-error">同步失敗</div>
-          <p class="storage-copy">
-            無法連線到 Firestore，目前使用本機暫存資料。
-            ${syncError ? `<br><small>${escapeHtml(syncError)}</small>` : ""}
-          </p>
-          <button class="button subtle auth-action-btn" id="auth-sign-out-btn" type="button">登出</button>
-        </div>
-      `;
-      break;
-  }
-
-  elements.storageNote.innerHTML = html;
-
-  // Bind dynamic buttons after each render
-  elements.storageNote.querySelector("#auth-sign-in-btn")?.addEventListener("click", handleSignIn);
-  elements.storageNote.querySelector("#auth-sign-out-btn")?.addEventListener("click", handleSignOut);
-  elements.storageNote.querySelector("#auth-migrate-btn")?.addEventListener("click", migrateLocalToCloud);
-}
-
-function renderProjectionGrid(lift, oneRm) {
-  if (!oneRm) {
-    elements.projectionGrid.innerHTML = `
-      <div class="empty-state">
-        <p>先輸入基準組，系統就會列出 1 到 12 下在不同 RPE 下的估計重量。</p>
-      </div>
-    `;
-    return;
-  }
-
-  const columnRpes = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
-  const rowReps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  const targetReps = toNumber(elements.targetReps.value);
-  const targetRpe = toNumber(elements.targetRpe.value);
-
-  elements.projectionGrid.innerHTML = `
-    <div class="projection-scroll">
-      <table class="projection-table coach-table">
-        <thead>
-          <tr>
-            <th>次數 / RPE</th>
-            ${columnRpes.map((rpe) => `<th class="${rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : ""}">${rpe}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${rowReps
-            .map((reps) => `
-              <tr>
-                <td class="row-label">${reps} 下</td>
-                ${columnRpes
-                  .map((rpe) => {
-                    const weight = prescribeLoad(oneRm, reps, rpe, state.profile.formula, state.profile.rounding);
-                    const isTarget = reps === targetReps && rpe === targetRpe;
-                    const colClass = rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : "";
-                    return `<td class="${colClass}${isTarget ? " target-cell" : ""}">${formatKg(weight)}</td>`;
-                  })
-                  .join("")}
-              </tr>
-            `)
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-    <p class="form-hint">
-      以 ${LIFT_META[lift].label} 目前基準組推得的 e1RM 為基礎。
-      <span class="hint-target">藍框</span>為「下一組」目標格，
-      <span class="hint-high">紅底</span>為 RPE ≥ 9 競賽強度。
-    </p>
-  `;
-}
-
-// ─── Data / export ──────────────────────────────────────────────────────────
 
 function exportJson() {
-  downloadFile(
-    "sbd-lab-data.json",
-    JSON.stringify(state, null, 2),
-    "application/json",
-  );
+  downloadFile("sbd-lab-data.json", JSON.stringify(state, null, 2), "application/json");
 }
 
 function exportCsv() {
@@ -1177,7 +774,7 @@ function exportCsv() {
     formatNumber(entry.e1rm, 1),
     formatNumber(entry.intensity, 1),
     formatNumber(entry.volume, 1),
-    entry.bodyweight ?? "",
+    entry.bodyweight !== null && entry.bodyweight !== undefined ? entry.bodyweight : "",
     `"${(entry.notes || "").replaceAll('"', '""')}"`,
   ]);
 
@@ -1185,9 +782,11 @@ function exportCsv() {
   downloadFile("sbd-lab-data.csv", csv, "text/csv;charset=utf-8");
 }
 
-function importJson(event) {
+async function importJson(event) {
   const [file] = event.target.files || [];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   const reader = new FileReader();
   reader.onload = async () => {
@@ -1196,28 +795,21 @@ function importJson(event) {
       const nextState = normalizeImportedState(parsed);
 
       if (isCloudMode()) {
-        // Write imported entries to Firestore (additive batch)
-        const uid = fb.user.uid;
-        const BATCH_SIZE = 400;
-        const entries = nextState.entries;
-        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-          const batch = writeBatch(fb.db);
-          entries.slice(i, i + BATCH_SIZE).forEach((entry) => {
-            batch.set(doc(fb.db, "users", uid, "sbd-entries", entry.id), entry);
-          });
-          await batch.commit();
-        }
-        // Save imported profile
+        const batch = writeBatch(syncState.db);
+        nextState.entries.forEach((entry) => {
+          batch.set(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", entry.id), entry);
+        });
+        await batch.commit();
         state.profile = nextState.profile;
         await saveProfileToCloud();
         hydrateProfileInputs();
-        // onSnapshot re-renders entries
+        renderApp();
       } else {
         state.profile = nextState.profile;
         state.ui = nextState.ui;
         state.entries = nextState.entries;
         sortEntries();
-        persistState();
+        persistStateLocal();
         hydrateProfileInputs();
         renderApp();
       }
@@ -1227,85 +819,203 @@ function importJson(event) {
       elements.importFile.value = "";
     }
   };
-
   reader.readAsText(file);
 }
 
-function clearAllData() {
-  const shouldClear = window.confirm("這會刪除所有訓練資料，是否繼續？");
-  if (!shouldClear) return;
+async function clearAllData() {
+  const ok = window.confirm("這會清空目前的訓練資料，確定繼續嗎？");
+  if (!ok) {
+    return;
+  }
 
   if (isCloudMode()) {
-    const uid = fb.user.uid;
-    const BATCH_SIZE = 400;
     const entries = [...state.entries];
-    (async () => {
-      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = writeBatch(fb.db);
-        entries.slice(i, i + BATCH_SIZE).forEach((entry) => {
-          batch.delete(doc(fb.db, "users", uid, "sbd-entries", entry.id));
-        });
-        await batch.commit();
-      }
-      state.profile = structuredClone(DEFAULT_STATE.profile);
-      await saveProfileToCloud();
-      persistStateLocal();
-      hydrateProfileInputs();
-      setDefaultDate();
-      // onSnapshot updates entries to []
-    })().catch(console.error);
+    const batch = writeBatch(syncState.db);
+    entries.forEach((entry) => {
+      batch.delete(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", entry.id));
+    });
+    await batch.commit();
+    state.profile = structuredClone(DEFAULT_STATE.profile);
+    await saveProfileToCloud();
+    hydrateProfileInputs();
+    renderApp();
   } else {
     state.profile = structuredClone(DEFAULT_STATE.profile);
     state.ui = structuredClone(DEFAULT_STATE.ui);
     state.entries = [];
-    persistState();
+    persistStateLocal();
     hydrateProfileInputs();
     setDefaultDate();
     renderApp();
   }
 }
 
-// ─── Compute ────────────────────────────────────────────────────────────────
+async function initFirebase() {
+  if (!isFirebaseConfigured(firebaseConfig)) {
+    syncState.mode = "config-missing";
+    renderStorageNote();
+    return;
+  }
 
-function fillRpeSelect(select, defaultValue) {
-  select.innerHTML = RPE_VALUES.map(
-    (value) => `<option value="${value}" ${value === defaultValue ? "selected" : ""}>${value}</option>`,
-  ).join("");
+  try {
+    syncState.app = initializeApp(firebaseConfig);
+    syncState.auth = getAuth(syncState.app);
+    syncState.db = getFirestore(syncState.app);
+    syncState.provider = new GoogleAuthProvider();
+    syncState.provider.setCustomParameters({ prompt: "select_account" });
+
+    await setPersistence(syncState.auth, browserLocalPersistence);
+
+    syncState.ready = true;
+    syncState.mode = "signed-out";
+    renderStorageNote();
+
+    onAuthStateChanged(syncState.auth, (user) => {
+      if (syncState.unsubscribeEntries) {
+        syncState.unsubscribeEntries();
+        syncState.unsubscribeEntries = null;
+      }
+
+      syncState.user = user;
+
+      if (!user) {
+        const local = loadState();
+        state.entries = local.entries;
+        state.profile = local.profile;
+        state.ui = local.ui;
+        hydrateProfileInputs();
+        syncState.mode = "signed-out";
+        renderApp();
+        return;
+      }
+
+      syncState.mode = "syncing";
+      renderStorageNote();
+      subscribeToCloudData(user.uid);
+    });
+  } catch (error) {
+    syncState.mode = "error";
+    syncState.error = stringifyError(error);
+    renderStorageNote();
+  }
+}
+
+function subscribeToCloudData(uid) {
+  getDoc(doc(syncState.db, "users", uid, "sbd-profile", "data"))
+    .then((snapshot) => {
+      if (snapshot.exists()) {
+        state.profile = { ...DEFAULT_STATE.profile, ...snapshot.data() };
+      } else {
+        setDoc(doc(syncState.db, "users", uid, "sbd-profile", "data"), state.profile).catch(console.error);
+      }
+      hydrateProfileInputs();
+    })
+    .catch(console.error);
+
+  syncState.unsubscribeEntries = onSnapshot(
+    collection(syncState.db, "users", uid, "sbd-entries"),
+    (snapshot) => {
+      state.entries = snapshot.docs.map((item) => normalizeEntry(item.data())).filter(Boolean);
+      sortEntries();
+      syncState.mode = "cloud";
+      persistStateLocal();
+      renderApp();
+    },
+    (error) => {
+      syncState.mode = "error";
+      syncState.error = stringifyError(error);
+      renderStorageNote();
+    },
+  );
+}
+
+async function handleSignIn() {
+  if (!syncState.ready) {
+    return;
+  }
+  try {
+    syncState.mode = "signing-in";
+    renderStorageNote();
+    await signInWithPopup(syncState.auth, syncState.provider);
+  } catch (error) {
+    syncState.mode = "signed-out";
+    syncState.error = stringifyError(error);
+    renderStorageNote();
+  }
+}
+
+async function handleSignOut() {
+  if (!syncState.auth) {
+    return;
+  }
+  try {
+    await signOut(syncState.auth);
+  } catch (error) {
+    syncState.mode = "error";
+    syncState.error = stringifyError(error);
+    renderStorageNote();
+  }
+}
+
+async function migrateLocalToCloud() {
+  if (!isCloudMode()) {
+    return;
+  }
+  const localEntries = loadLocalEntries();
+  if (localEntries.length === 0) {
+    window.alert("這台裝置目前沒有可同步的本機資料。");
+    return;
+  }
+  const batch = writeBatch(syncState.db);
+  localEntries.forEach((entry) => {
+    batch.set(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", entry.id), entry);
+  });
+  await batch.commit();
+}
+
+async function saveEntryToCloud(entry) {
+  await setDoc(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", entry.id), entry);
+}
+
+async function deleteEntryFromCloud(id) {
+  await deleteDoc(doc(syncState.db, "users", syncState.user.uid, "sbd-entries", id));
+}
+
+async function saveProfileToCloud() {
+  if (!isCloudMode()) {
+    return;
+  }
+  await setDoc(doc(syncState.db, "users", syncState.user.uid, "sbd-profile", "data"), state.profile);
 }
 
 function getHeadlineMetrics() {
-  const enrichedEntries = getEnrichedEntries();
-  const sessions = new Set(enrichedEntries.map((entry) => entry.date)).size;
-  const totalVolume = enrichedEntries.reduce((sum, entry) => sum + entry.volume, 0);
-  const bestLiftE1RMs = Object.keys(LIFT_META).map((lift) => getLiftStats(lift).bestE1RM || 0);
-  const totalE1RM = bestLiftE1RMs.reduce((sum, value) => sum + value, 0);
-  const prCount = getRecentPrs().length;
-  const athlete = state.profile.athleteName ? `${state.profile.athleteName} 的資料庫` : "你的資料庫";
+  const entries = getEnrichedEntries();
+  const sessions = new Set(entries.map((entry) => entry.date)).size;
+  const volume = entries.reduce((sum, entry) => sum + entry.volume, 0);
+  const totalE1RM = Object.keys(LIFT_META)
+    .map((lift) => getLiftStats(lift).bestE1RM || 0)
+    .reduce((sum, value) => sum + value, 0);
 
   return [
     {
       label: "SBD e1RM Total",
       value: totalE1RM ? formatKg(totalE1RM) : "尚無資料",
-      helper: totalE1RM ? `以各主項最佳 e1RM 加總，方便看整體實力面。` : `${athlete} 還沒有訓練紀錄。`,
-      className: "total",
+      helper: "把深蹲、臥推、硬舉最佳 e1RM 相加，看整體力量面。",
     },
     {
       label: "總訓練容量",
-      value: totalVolume ? formatKg(totalVolume) : "0 kg",
-      helper: "所有已紀錄工作組的重量 x 次數 x 組數總和。",
-      className: "volume",
+      value: volume ? formatKg(volume) : "0 kg",
+      helper: "所有已記錄工作組的重量 x 次數 x 組數總和。",
     },
     {
       label: "訓練天數",
-      value: `${sessions}`,
+      value: String(sessions),
       helper: "依日期去重後計算，可快速看週期密度。",
-      className: "sessions",
     },
     {
-      label: "最近 PR 數",
-      value: `${prCount}`,
-      helper: "自動檢出的近期重量 PR、e1RM PR 與容量 PR。",
-      className: "prs",
+      label: "最近 PR",
+      value: String(getRecentPrs().length),
+      helper: "自動追蹤重量 PR、e1RM PR 與容量 PR。",
     },
   ];
 }
@@ -1314,21 +1024,17 @@ function getLiftStats(lift) {
   const entries = getEnrichedEntries()
     .filter((entry) => entry.lift === lift)
     .sort((a, b) => a.date.localeCompare(b.date));
-
   const bestWeight = entries.reduce((max, entry) => Math.max(max, entry.weight), 0);
   const bestE1RM = entries.reduce((max, entry) => Math.max(max, entry.e1rm), 0);
-  const bestSingle = entries
-    .filter((entry) => entry.reps === 1)
-    .reduce((max, entry) => Math.max(max, entry.weight), 0);
+  const bestSingle = entries.filter((entry) => entry.reps === 1).reduce((max, entry) => Math.max(max, entry.weight), 0);
 
   const timelineMap = new Map();
   entries.forEach((entry) => {
-    const current = timelineMap.get(entry.date) ?? 0;
-    timelineMap.set(entry.date, Math.max(current, entry.e1rm));
+    timelineMap.set(entry.date, Math.max(timelineMap.get(entry.date) || 0, entry.e1rm));
   });
 
   const timeline = Array.from(timelineMap.entries()).map(([date, e1rm]) => ({ date, e1rm }));
-  const latest = timeline.at(-1);
+  const latest = timeline.length > 0 ? timeline[timeline.length - 1] : null;
 
   return {
     entries,
@@ -1336,13 +1042,12 @@ function getLiftStats(lift) {
     bestE1RM,
     bestSingle,
     timeline,
-    latestDate: latest?.date ?? "",
-    latestE1RM: latest?.e1rm ?? 0,
+    latestDate: latest ? latest.date : "",
+    latestE1RM: latest ? latest.e1rm : 0,
   };
 }
 
 function getRecentPrs() {
-  const enrichedEntries = getEnrichedEntries().sort((a, b) => a.date.localeCompare(b.date));
   const records = {
     squat: { weight: 0, e1rm: 0, volume: 0 },
     bench: { weight: 0, e1rm: 0, volume: 0 },
@@ -1350,39 +1055,23 @@ function getRecentPrs() {
   };
   const feed = [];
 
-  enrichedEntries.forEach((entry) => {
-    const current = records[entry.lift];
-
-    if (entry.weight > current.weight) {
-      current.weight = entry.weight;
-      feed.push({
-        date: entry.date,
-        lift: entry.lift,
-        kind: "重量 PR",
-        detail: `${formatKg(entry.weight)} x ${entry.reps} @ RPE ${entry.rpe}`,
-      });
-    }
-
-    if (entry.e1rm > current.e1rm) {
-      current.e1rm = entry.e1rm;
-      feed.push({
-        date: entry.date,
-        lift: entry.lift,
-        kind: "e1RM PR",
-        detail: `e1RM 更新到 ${formatKg(entry.e1rm)}，由 ${formatKg(entry.weight)} x ${entry.reps} @ ${entry.rpe} 推估`,
-      });
-    }
-
-    if (entry.volume > current.volume) {
-      current.volume = entry.volume;
-      feed.push({
-        date: entry.date,
-        lift: entry.lift,
-        kind: "容量 PR",
-        detail: `單筆容量達 ${formatKg(entry.volume)}，設定為 ${formatKg(entry.weight)} x ${entry.reps} x ${entry.sets}`,
-      });
-    }
-  });
+  getEnrichedEntries()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach((entry) => {
+      const current = records[entry.lift];
+      if (entry.weight > current.weight) {
+        current.weight = entry.weight;
+        feed.push({ date: entry.date, lift: entry.lift, kind: "重量 PR", detail: `${formatKg(entry.weight)} x ${entry.reps} @ RPE ${formatNumber(entry.rpe, 1)}` });
+      }
+      if (entry.e1rm > current.e1rm) {
+        current.e1rm = entry.e1rm;
+        feed.push({ date: entry.date, lift: entry.lift, kind: "e1RM PR", detail: `e1RM 更新到 ${formatKg(entry.e1rm)}` });
+      }
+      if (entry.volume > current.volume) {
+        current.volume = entry.volume;
+        feed.push({ date: entry.date, lift: entry.lift, kind: "容量 PR", detail: `${formatKg(entry.weight)} x ${entry.reps} x ${entry.sets}` });
+      }
+    });
 
   return feed.slice(-8).reverse();
 }
@@ -1393,22 +1082,57 @@ function getEnrichedEntries() {
     const e1rm = estimate1RM(entry.weight, entry.reps, entry.rpe, state.profile.formula);
     const volume = entry.weight * entry.reps * entry.sets;
     const intensity = e1rm ? (entry.weight / e1rm) * 100 : 0;
-
-    return {
-      ...entry,
-      rir,
-      e1rm,
-      intensity,
-      volume,
-    };
+    return { ...entry, rir, e1rm, intensity, volume };
   });
+}
+
+function renderTrendChart(points, lift) {
+  if (points.length === 0) {
+    return `
+      <svg class="trend-svg" viewBox="0 0 320 120" preserveAspectRatio="none">
+        <rect x="0" y="0" width="320" height="120" rx="12" fill="rgba(255,255,255,0.55)" />
+        <text x="18" y="66" fill="#627081" font-size="14">尚無資料</text>
+      </svg>
+    `;
+  }
+
+  if (points.length === 1) {
+    return `
+      <svg class="trend-svg" viewBox="0 0 320 120" preserveAspectRatio="none">
+        <rect x="0" y="0" width="320" height="120" rx="12" fill="rgba(255,255,255,0.55)" />
+        <circle cx="160" cy="60" r="6" fill="${LIFT_META[lift].color}" />
+      </svg>
+    `;
+  }
+
+  const width = 320;
+  const height = 120;
+  const padding = 12;
+  const values = points.map((point) => point.e1rm);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const coords = points.map((point, index) => {
+    const x = padding + (index * (width - padding * 2)) / (points.length - 1);
+    const y = height - padding - ((point.e1rm - min) / range) * (height - padding * 2);
+    return `${x},${y}`;
+  });
+
+  return `
+    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="14" fill="rgba(255,255,255,0.55)" />
+      <polyline fill="none" stroke="${LIFT_META[lift].color}" stroke-width="4" points="${coords.join(" ")}" />
+      ${coords.map((point) => {
+        const [x, y] = point.split(",");
+        return `<circle cx="${x}" cy="${y}" r="4" fill="${LIFT_META[lift].color}"></circle>`;
+      }).join("")}
+    </svg>
+  `;
 }
 
 function estimate1RM(weight, reps, rpe, formula) {
   const normalizedWeight = toNumber(weight);
-  const normalizedReps = Math.max(1, toNumber(reps));
-  const repsToFailure = normalizedReps + rirFromRpe(rpe);
-
+  const repsToFailure = Math.max(1, toNumber(reps, 1)) + rirFromRpe(rpe);
   if (!normalizedWeight) {
     return 0;
   }
@@ -1423,76 +1147,75 @@ function estimate1RM(weight, reps, rpe, formula) {
 
 function prescribeLoad(oneRm, reps, rpe, formula, increment) {
   const orm = toNumber(oneRm);
-  const repsToFailure = Math.max(1, toNumber(reps)) + rirFromRpe(rpe);
-
+  const repsToFailure = Math.max(1, toNumber(reps, 1)) + rirFromRpe(rpe);
   if (!orm) {
     return 0;
   }
 
-  let rawWeight = 0;
-  if (formula === "brzycki") {
-    rawWeight = orm / (36 / (37 - Math.min(repsToFailure, 36)));
-  } else {
-    rawWeight = orm / (1 + repsToFailure / 30);
-  }
+  const rawWeight =
+    formula === "brzycki"
+      ? orm / (36 / (37 - Math.min(repsToFailure, 36)))
+      : orm / (1 + repsToFailure / 30);
 
   return roundToIncrement(rawWeight, increment || 2.5);
 }
 
 function rirFromRpe(rpe) {
-  return clamp(10 - toNumber(rpe), 0, 4);
+  return clamp(10 - toNumber(rpe), 0, 5);
+}
+
+function buildPlateBreakdown(targetWeight, barbellWeight) {
+  const plateSizes = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const totalTarget = Math.max(0, roundToIncrement(targetWeight, 0.5));
+  const perSide = Math.max(0, (totalTarget - barbellWeight) / 2);
+  let remainder = perSide;
+  const plates = [];
+
+  plateSizes.forEach((size) => {
+    const count = Math.floor((remainder + 1e-9) / size);
+    if (count > 0) {
+      plates.push({ size, count });
+      remainder = roundToIncrement(remainder - size * count, 0.25);
+    }
+  });
+
+  return { perSide, plates, remaining: remainder };
 }
 
 function normalizeEntry(data) {
-  if (!data) return null;
+  if (!data) {
+    return null;
+  }
   const entry = {
     id: data.id || crypto.randomUUID(),
     date: data.date || dateInputValue(new Date()),
-    lift: Object.keys(LIFT_META).includes(data.lift) ? data.lift : "squat",
+    lift: Object.prototype.hasOwnProperty.call(LIFT_META, data.lift) ? data.lift : "squat",
     variant: data.variant || "",
     block: data.block || "",
     weight: toNumber(data.weight),
     reps: Math.max(1, toNumber(data.reps, 1)),
     sets: Math.max(1, toNumber(data.sets, 1)),
-    rpe: clamp(toNumber(data.rpe, 8), 6, 10),
+    rpe: clamp(toNumber(data.rpe, 8), 5, 10),
     bodyweight: data.bodyweight === null || data.bodyweight === undefined ? null : toNumber(data.bodyweight),
     notes: data.notes || "",
   };
   return entry.weight > 0 ? entry : null;
 }
 
-function buildPlateBreakdown(targetWeight, barbellWeight) {
-  const standardPlates = [25, 20, 15, 10, 5, 2.5, 1.25];
-  const totalTarget = Math.max(0, roundToIncrement(targetWeight, 0.5));
-  const perSide = Math.max(0, (totalTarget - barbellWeight) / 2);
-  let remainder = perSide;
-  const plates = [];
-
-  standardPlates.forEach((plateSize) => {
-    const count = Math.floor((remainder + 1e-9) / plateSize);
-    if (count > 0) {
-      plates.push({ size: plateSize, count });
-      remainder = roundToIncrement(remainder - count * plateSize, 0.25);
-    }
-  });
-
-  return {
-    perSide,
-    plates,
-    remaining: remainder,
-  };
+function fillRpeSelect(select, defaultValue) {
+  select.innerHTML = RPE_VALUES.map((value) => `<option value="${value}" ${value === defaultValue ? "selected" : ""}>${formatNumber(value, 1)}</option>`).join("");
 }
 
-// ─── Storage ────────────────────────────────────────────────────────────────
+function fillRepSelect(select, maxReps, defaultValue) {
+  select.innerHTML = Array.from({ length: maxReps }, (_, index) => index + 1)
+    .map((value) => `<option value="${value}" ${value === defaultValue ? "selected" : ""}>${value} 下</option>`)
+    .join("");
+}
 
 function loadState() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return structuredClone(DEFAULT_STATE);
-    }
-
-    return normalizeImportedState(JSON.parse(raw));
+    return raw ? normalizeImportedState(JSON.parse(raw)) : structuredClone(DEFAULT_STATE);
   } catch (error) {
     return structuredClone(DEFAULT_STATE);
   }
@@ -1501,42 +1224,30 @@ function loadState() {
 function loadLocalEntries() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed?.entries) ? parsed.entries.filter(Boolean) : [];
-  } catch {
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && Array.isArray(parsed.entries) ? parsed.entries.map(normalizeEntry).filter(Boolean) : [];
+  } catch (error) {
     return [];
   }
 }
 
 function normalizeImportedState(data) {
   const profile = {
-    athleteName: data?.profile?.athleteName ?? "",
-    formula: data?.profile?.formula === "brzycki" ? "brzycki" : "epley",
-    rounding: toNumber(data?.profile?.rounding, 2.5),
-    barbellWeight: toNumber(data?.profile?.barbellWeight, 20),
+    athleteName: data && data.profile && data.profile.athleteName ? data.profile.athleteName : "",
+    formula: data && data.profile && data.profile.formula === "brzycki" ? "brzycki" : "epley",
+    rounding: toNumber(data && data.profile ? data.profile.rounding : 2.5, 2.5),
+    barbellWeight: toNumber(data && data.profile ? data.profile.barbellWeight : 20, 20),
   };
   const ui = {
-    activeView: ["overview", "log", "calculator", "research"].includes(data?.ui?.activeView)
-      ? data.ui.activeView
-      : "calculator",
+    activeView: data && data.ui && VALID_VIEWS.includes(data.ui.activeView) ? data.ui.activeView : "calculator",
   };
-
-  const entriesSource = Array.isArray(data?.entries) ? data.entries : [];
-  const entries = entriesSource.map(normalizeEntry).filter(Boolean);
-
+  const entries = data && Array.isArray(data.entries) ? data.entries.map(normalizeEntry).filter(Boolean) : [];
   return { profile, ui, entries };
-}
-
-function persistState() {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function persistStateLocal() {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
-
-// ─── UI helpers ─────────────────────────────────────────────────────────────
 
 function hydrateProfileInputs() {
   elements.athleteName.value = state.profile.athleteName;
@@ -1546,37 +1257,32 @@ function hydrateProfileInputs() {
 }
 
 function setActiveView(view) {
-  if (!["overview", "log", "calculator", "research"].includes(view)) {
+  if (!VALID_VIEWS.includes(view)) {
     return;
   }
-
   state.ui.activeView = view;
-  persistState();
+  persistStateLocal();
   applyActiveView();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function applyActiveView() {
-  const activeView = state.ui?.activeView || "overview";
-
+  const view = VALID_VIEWS.includes(state.ui.activeView) ? state.ui.activeView : "calculator";
   elements.sectionViews.forEach((section) => {
-    section.hidden = section.dataset.view !== activeView;
+    section.hidden = section.dataset.view !== view;
   });
-
   elements.viewButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.viewTarget === activeView);
+    button.classList.toggle("active", button.dataset.viewTarget === view);
   });
-}
-
-function setDefaultDate() {
-  elements.entryDate.value = dateInputValue(new Date());
 }
 
 function sortEntries() {
   state.entries.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// ─── Format ─────────────────────────────────────────────────────────────────
+function setDefaultDate() {
+  elements.entryDate.value = dateInputValue(new Date());
+}
 
 function dateInputValue(date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
@@ -1585,35 +1291,25 @@ function dateInputValue(date) {
 
 function formatDate(dateString) {
   try {
-    return new Intl.DateTimeFormat("zh-TW", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(new Date(`${dateString}T00:00:00`));
+    return new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "short", day: "numeric" }).format(new Date(`${dateString}T00:00:00`));
   } catch (error) {
     return dateString;
   }
 }
 
 function formatKg(value) {
-  if (!value && value !== 0) {
-    return "-";
-  }
   return `${formatNumber(value, 1)} kg`;
 }
 
 function formatNumber(value, digits = 0) {
-  return Number(value).toLocaleString("zh-TW", {
-    minimumFractionDigits: value % 1 === 0 && digits > 0 ? 0 : 0,
+  return Number(value || 0).toLocaleString("zh-TW", {
+    minimumFractionDigits: digits > 0 && value % 1 !== 0 ? Math.min(digits, 1) : 0,
     maximumFractionDigits: digits,
   });
 }
 
 function roundToIncrement(value, increment) {
-  if (!increment) {
-    return value;
-  }
-  return Math.round(value / increment) * increment;
+  return increment ? Math.round(value / increment) * increment : value;
 }
 
 function toNumber(value, fallback = 0) {
@@ -1623,6 +1319,27 @@ function toNumber(value, fallback = 0) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function isCloudMode() {
+  return syncState.mode === "cloud" || syncState.mode === "syncing";
+}
+
+function isFirebaseConfigured(config) {
+  const keys = ["apiKey", "authDomain", "projectId", "appId"];
+  return keys.every((key) => {
+    const value = String(config && config[key] ? config[key] : "").trim();
+    return value && !value.startsWith("YOUR_");
+  });
 }
 
 function downloadFile(filename, content, type) {
@@ -1635,28 +1352,21 @@ function downloadFile(filename, content, type) {
   URL.revokeObjectURL(url);
 }
 
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function resolveCssColor(lift) {
-  const color = {
-    squat: "#0e7490",
-    bench: "#b45309",
-    deadlift: "#9333ea",
-  };
-  return color[lift] || "#0f5f8c";
+function stringifyError(error) {
+  if (!error) {
+    return "";
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error.code) {
+    return `${error.code}: ${error.message || ""}`.trim();
+  }
+  return error.message || String(error);
 }
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {
-      // Ignore offline cache registration errors.
-    });
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
   }
 }
