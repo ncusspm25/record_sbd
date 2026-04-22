@@ -2,12 +2,15 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta
       name="description"
       content="SBD Lab 是一個以公斤制為主的深蹲、臥推、硬舉訓練記錄與 RPE 換算工具，支援 PR 追蹤、e1RM 趨勢、RPE 計算與資料匯出。"
     />
     <meta name="theme-color" content="#111827" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SBD Lab" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -158,65 +161,87 @@
           </form>
         </section>
 
-        <section class="panel calculator-panel section-view" data-view="calculator">
-          <div class="section-title">
-            <div>
-              <p class="section-kicker">Calculator</p>
-              <h2>RPE 推算計算機</h2>
-            </div>
-            <p class="section-note">先輸入你剛做完的一組，再推算接下來任意 reps、任意 RPE 大概該做多少公斤。</p>
+        <section class="panel calculator-panel section-view calc-dark" data-view="calculator">
+
+          <!-- Big projected weight hero -->
+          <div class="calc-hero">
+            <p class="calc-hero-eyebrow">PROJECTED WEIGHT</p>
+            <div class="calc-hero-weight" id="calc-projected-num">—</div>
+            <p class="calc-hero-e1rm" id="calc-e1rm-line">e1RM : —</p>
           </div>
-          <div class="calculator-grid">
-            <article class="calculator-card">
-              <h3>基準組</h3>
-              <form id="estimate-form" class="mini-form">
-                <label>
-                  <span>主項</span>
-                  <select id="estimate-lift" name="lift">
-                    <option value="squat">深蹲</option>
-                    <option value="bench">臥推</option>
-                    <option value="deadlift">硬舉</option>
-                  </select>
-                </label>
-                <label>
-                  <span>重量（kg）</span>
-                  <input id="estimate-weight" type="number" min="0" step="0.5" value="100" />
-                </label>
-                <label>
-                  <span>次數</span>
-                  <input id="estimate-reps" type="number" min="1" step="1" value="5" />
-                </label>
-                <label>
-                  <span>RPE</span>
-                  <select id="estimate-rpe"></select>
-                </label>
-              </form>
-              <div class="result-stack" id="estimate-output"></div>
-            </article>
 
-            <article class="calculator-card">
-              <h3>下一組推算</h3>
-              <form id="target-form" class="mini-form">
-                <label>
-                  <span>你想做幾下</span>
-                  <input id="target-reps" type="number" min="1" step="1" value="4" />
-                </label>
-                <label>
-                  <span>目標 RPE</span>
-                  <select id="target-rpe"></select>
-                </label>
-              </form>
-              <div class="result-stack" id="target-output"></div>
-              <div class="plate-output" id="plate-output"></div>
-            </article>
+          <div class="calc-body">
 
-            <article class="calculator-card">
-              <h3>快速換算表</h3>
-              <p class="calculator-copy">
-                用上方基準組的 e1RM，快速列出常用 reps 與 RPE 的建議重量。任意 reps 請用左邊的「下一組推算」。
-              </p>
+            <!-- Completed Set -->
+            <div class="calc-card">
+              <h3 class="calc-card-title">Completed Set ⓘ</h3>
+
+              <div class="calc-outlined-field">
+                <select id="estimate-lift" class="calc-input" name="lift">
+                  <option value="squat">Squat 深蹲</option>
+                  <option value="bench">Bench Press 臥推</option>
+                  <option value="deadlift">Deadlift 硬舉</option>
+                </select>
+                <label>Lift</label>
+              </div>
+
+              <div class="calc-outlined-field">
+                <input id="estimate-weight" class="calc-input" type="number" min="0" step="0.5" value="100" placeholder=" " />
+                <label>Weight (kg)</label>
+              </div>
+
+              <div class="calc-two-col">
+                <div class="calc-outlined-field">
+                  <input id="estimate-reps" class="calc-input" type="number" min="1" step="1" value="5" placeholder=" " />
+                  <label>Reps</label>
+                </div>
+                <div class="calc-outlined-field">
+                  <select id="estimate-rpe" class="calc-input"></select>
+                  <label>RPE</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Target Set -->
+            <div class="calc-card">
+              <h3 class="calc-card-title">Target Set ⓘ</h3>
+
+              <!-- Hidden inputs keep existing JS logic intact -->
+              <input id="target-reps" type="number" min="1" max="12" step="1" value="5" hidden />
+              <select id="target-rpe" hidden></select>
+
+              <div class="calc-stepper-field">
+                <span class="calc-stepper-label">Reps</span>
+                <div class="calc-stepper-row">
+                  <button class="stepper-btn" id="target-reps-dec" type="button">▼</button>
+                  <span class="stepper-val" id="target-reps-display">5</span>
+                  <button class="stepper-btn" id="target-reps-inc" type="button">▲</button>
+                </div>
+              </div>
+
+              <div class="calc-stepper-field">
+                <span class="calc-stepper-label">RPE</span>
+                <div class="calc-stepper-row">
+                  <button class="stepper-btn" id="target-rpe-dec" type="button">▼</button>
+                  <span class="stepper-val" id="target-rpe-display">8.0</span>
+                  <button class="stepper-btn" id="target-rpe-inc" type="button">▲</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Plate breakdown -->
+            <div class="plate-output" id="plate-output"></div>
+
+            <!-- Quick reference table -->
+            <div class="calc-card">
+              <h3 class="calc-card-title">Quick Reference</h3>
               <div id="projection-grid"></div>
-            </article>
+            </div>
+
+            <!-- Hidden compat outputs -->
+            <div id="estimate-output" hidden></div>
+            <div id="target-output" hidden></div>
+
           </div>
         </section>
 
@@ -297,6 +322,6 @@
         <button class="dock-tab" type="button" data-view-target="research">研究</button>
       </nav>
 
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

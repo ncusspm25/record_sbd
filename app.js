@@ -1,3 +1,25 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+import {
+  GoogleAuthProvider,
+  browserLocalPersistence,
+  getAuth,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+} from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getFirestore,
+  onSnapshot,
+  setDoc,
+  writeBatch,
+} from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
 const STORAGE_KEY = "sbd-lab-storage-v1";
 const RPE_VALUES = Array.from({ length: 9 }, (_, index) => 6 + index * 0.5);
 const LIFT_META = {
@@ -209,9 +231,22 @@ const DEFAULT_STATE = {
     barbellWeight: 20,
   },
   ui: {
-    activeView: "overview",
+    activeView: "calculator",
   },
   entries: [],
+};
+
+// Firebase runtime state
+const fb = {
+  app: null,
+  auth: null,
+  db: null,
+  provider: null,
+  user: null,
+  syncMode: "initializing", // initializing | config-missing | signed-out | signing-in | syncing | cloud | error
+  syncError: "",
+  ready: false,
+  unsubscribeEntries: null,
 };
 
 const state = loadState();
@@ -272,6 +307,176 @@ renderApp();
 bindEvents();
 registerServiceWorker();
 
+// Kick off Firebase in the background — doesn't block initial render
+initFirebase();
+
+// ─── Firebase ──────────────────────────────────────────────────────────────
+
+async function initFirebase() {
+  if (!isFirebaseConfigured(firebaseConfig)) {
+    fb.syncMode = "config-missing";
+    renderStorageNote();
+    return;
+  }
+
+  try {
+    fb.app = initializeApp(firebaseConfig);
+    fb.auth = getAuth(fb.app);
+    fb.db = getFirestore(fb.app);
+    fb.provider = new GoogleAuthProvider();
+    fb.provider.setCustomParameters({ prompt: "select_account" });
+
+    await setPersistence(fb.auth, browserLocalPersistence);
+
+    fb.ready = true;
+    fb.syncMode = "signed-out";
+    renderStorageNote();
+
+    onAuthStateChanged(fb.auth, (user) => {
+      if (fb.unsubscribeEntries) {
+        fb.unsubscribeEntries();
+        fb.unsubscribeEntries = null;
+      }
+
+      fb.user = user;
+
+      if (!user) {
+        fb.syncMode = "signed-out";
+        renderStorageNote();
+        return;
+      }
+
+      fb.syncMode = "syncing";
+      renderStorageNote();
+      subscribeToCloudData(user.uid);
+    });
+  } catch (error) {
+    console.error("Firebase init error:", error);
+    fb.syncMode = "error";
+    fb.syncError = String(error?.message || error);
+    renderStorageNote();
+  }
+}
+
+function subscribeToCloudData(uid) {
+  if (!fb.db) return;
+
+  // Load profile from Firestore once
+  getDoc(doc(fb.db, "users", uid, "sbd-profile", "data"))
+    .then((snap) => {
+      if (snap.exists()) {
+        state.profile = { ...DEFAULT_STATE.profile, ...snap.data() };
+        hydrateProfileInputs();
+      } else {
+        // First sign-in: push local profile to cloud
+        setDoc(doc(fb.db, "users", uid, "sbd-profile", "data"), state.profile).catch(console.error);
+      }
+    })
+    .catch(console.error);
+
+  // Subscribe to entries in real-time
+  fb.unsubscribeEntries = onSnapshot(
+    collection(fb.db, "users", uid, "sbd-entries"),
+    (snapshot) => {
+      state.entries = snapshot.docs
+        .map((d) => normalizeEntry(d.data()))
+        .filter(Boolean);
+      sortEntries();
+      persistStateLocal();
+      fb.syncMode = "cloud";
+      renderApp();
+    },
+    (error) => {
+      console.error("Firestore snapshot error:", error);
+      fb.syncMode = "error";
+      fb.syncError = String(error?.message || error);
+      renderStorageNote();
+    },
+  );
+}
+
+async function handleSignIn() {
+  if (!fb.ready || !fb.auth) {
+    return;
+  }
+  try {
+    fb.syncMode = "signing-in";
+    renderStorageNote();
+    await signInWithPopup(fb.auth, fb.provider);
+  } catch (error) {
+    console.error("Sign-in error:", error);
+    fb.syncMode = fb.user ? "cloud" : "signed-out";
+    renderStorageNote();
+  }
+}
+
+async function handleSignOut() {
+  if (!fb.auth) return;
+  try {
+    await firebaseSignOut(fb.auth);
+    // onAuthStateChanged will clean up and revert to local mode
+    // Reload state from localStorage
+    const local = loadState();
+    state.entries = local.entries;
+    state.profile = local.profile;
+    state.ui = local.ui;
+    hydrateProfileInputs();
+    renderApp();
+  } catch (error) {
+    console.error("Sign-out error:", error);
+  }
+}
+
+async function migrateLocalToCloud() {
+  if (!fb.db || !fb.user?.uid) return;
+
+  const local = loadLocalEntries();
+  if (local.length === 0) return;
+
+  const uid = fb.user.uid;
+  const BATCH_SIZE = 400;
+
+  for (let i = 0; i < local.length; i += BATCH_SIZE) {
+    const batch = writeBatch(fb.db);
+    local.slice(i, i + BATCH_SIZE).forEach((entry) => {
+      batch.set(doc(fb.db, "users", uid, "sbd-entries", entry.id), entry);
+    });
+    await batch.commit();
+  }
+
+  // onSnapshot will fire and update state
+  renderStorageNote();
+}
+
+function isCloudMode() {
+  return fb.syncMode === "cloud" || fb.syncMode === "syncing";
+}
+
+function isFirebaseConfigured(config) {
+  const required = ["apiKey", "authDomain", "projectId", "appId"];
+  return required.every((k) => {
+    const v = String(config?.[k] || "").trim();
+    return v && !v.startsWith("YOUR_");
+  });
+}
+
+async function saveEntryToCloud(entry) {
+  if (!fb.db || !fb.user?.uid) throw new Error("cloud-not-ready");
+  await setDoc(doc(fb.db, "users", fb.user.uid, "sbd-entries", entry.id), entry);
+}
+
+async function deleteEntryFromCloud(id) {
+  if (!fb.db || !fb.user?.uid) throw new Error("cloud-not-ready");
+  await deleteDoc(doc(fb.db, "users", fb.user.uid, "sbd-entries", id));
+}
+
+async function saveProfileToCloud() {
+  if (!fb.db || !fb.user?.uid) return;
+  await setDoc(doc(fb.db, "users", fb.user.uid, "sbd-profile", "data"), state.profile);
+}
+
+// ─── Event binding ──────────────────────────────────────────────────────────
+
 function bindEvents() {
   elements.profileForm.addEventListener("input", handleProfileChange);
   elements.entryForm.addEventListener("submit", handleEntrySubmit);
@@ -289,6 +494,28 @@ function bindEvents() {
     element.addEventListener("input", renderCalculators);
   });
 
+  // Target reps stepper
+  document.querySelector("#target-reps-inc")?.addEventListener("click", () => {
+    elements.targetReps.value = Math.min(12, toNumber(elements.targetReps.value) + 1);
+    renderCalculators();
+  });
+  document.querySelector("#target-reps-dec")?.addEventListener("click", () => {
+    elements.targetReps.value = Math.max(1, toNumber(elements.targetReps.value) - 1);
+    renderCalculators();
+  });
+
+  // Target RPE stepper (step through RPE_VALUES array)
+  document.querySelector("#target-rpe-inc")?.addEventListener("click", () => {
+    const idx = RPE_VALUES.indexOf(toNumber(elements.targetRpe.value));
+    if (idx < RPE_VALUES.length - 1) elements.targetRpe.value = RPE_VALUES[idx + 1];
+    renderCalculators();
+  });
+  document.querySelector("#target-rpe-dec")?.addEventListener("click", () => {
+    const idx = RPE_VALUES.indexOf(toNumber(elements.targetRpe.value));
+    if (idx > 0) elements.targetRpe.value = RPE_VALUES[idx - 1];
+    renderCalculators();
+  });
+
   elements.exportJson.addEventListener("click", exportJson);
   elements.exportCsv.addEventListener("click", exportCsv);
   elements.importButton.addEventListener("click", () => elements.importFile.click());
@@ -301,16 +528,21 @@ function bindEvents() {
   });
 }
 
+// ─── Event handlers ─────────────────────────────────────────────────────────
+
 function handleProfileChange() {
   state.profile.athleteName = elements.athleteName.value.trim();
   state.profile.formula = elements.formula.value;
   state.profile.rounding = toNumber(elements.rounding.value, 2.5);
   state.profile.barbellWeight = toNumber(elements.barbellWeight.value, 20);
   persistState();
+  if (isCloudMode()) {
+    saveProfileToCloud().catch(console.error);
+  }
   renderApp();
 }
 
-function handleEntrySubmit(event) {
+async function handleEntrySubmit(event) {
   event.preventDefault();
 
   const entry = {
@@ -327,36 +559,95 @@ function handleEntrySubmit(event) {
     notes: elements.entryNotes.value.trim(),
   };
 
-  state.entries.push(entry);
-  sortEntries();
-  persistState();
-  elements.entryForm.reset();
-  setDefaultDate();
-  elements.entrySets.value = 1;
-  elements.entryLift.value = "squat";
-  elements.entryRpe.value = "8";
-  renderApp();
+  const resetForm = () => {
+    elements.entryForm.reset();
+    setDefaultDate();
+    elements.entrySets.value = 1;
+    elements.entryLift.value = "squat";
+    elements.entryRpe.value = "8";
+  };
+
+  if (isCloudMode()) {
+    try {
+      await saveEntryToCloud(entry);
+      // onSnapshot fires and updates state + re-renders
+      resetForm();
+    } catch (error) {
+      console.error("Save entry error:", error);
+    }
+  } else {
+    state.entries.push(entry);
+    sortEntries();
+    persistState();
+    resetForm();
+    renderApp();
+  }
 }
 
-function handleLoadDemo() {
+async function handleLoadDemo() {
   if (state.entries.length > 0) {
     const shouldContinue = window.confirm("目前已有訓練資料，載入示範資料會追加在現有資料後面，是否繼續？");
-    if (!shouldContinue) {
-      return;
+    if (!shouldContinue) return;
+  }
+
+  const newEntries = DEMO_ENTRIES.map((entry) => ({
+    ...entry,
+    id: `${entry.id}-${crypto.randomUUID()}`,
+  }));
+
+  if (isCloudMode()) {
+    const batch = writeBatch(fb.db);
+    newEntries.forEach((entry) => {
+      batch.set(doc(fb.db, "users", fb.user.uid, "sbd-entries", entry.id), entry);
+    });
+    batch.commit().catch(console.error);
+    // onSnapshot re-renders
+  } else {
+    state.entries.push(...newEntries);
+    sortEntries();
+    persistState();
+    renderApp();
+  }
+}
+
+async function handleTableAction(event) {
+  const { action, id } = event.currentTarget.dataset;
+  const index = state.entries.findIndex((entry) => entry.id === id);
+
+  if (index === -1) return;
+
+  if (action === "delete") {
+    if (isCloudMode()) {
+      await deleteEntryFromCloud(id).catch(console.error);
+      // onSnapshot re-renders
+    } else {
+      state.entries.splice(index, 1);
+      persistState();
+      renderApp();
     }
   }
 
-  state.entries.push(
-    ...DEMO_ENTRIES.map((entry) => ({
-      ...entry,
-      id: `${entry.id}-${crypto.randomUUID()}`,
-    })),
-  );
+  if (action === "duplicate") {
+    const source = state.entries[index];
+    const copy = {
+      ...source,
+      id: crypto.randomUUID(),
+      date: dateInputValue(new Date()),
+    };
 
-  sortEntries();
-  persistState();
-  renderApp();
+    if (isCloudMode()) {
+      await saveEntryToCloud(copy).catch(console.error);
+      // onSnapshot re-renders
+    } else {
+      state.entries.push(copy);
+      sortEntries();
+      persistState();
+      renderApp();
+    }
+  }
 }
+
+// ─── Render ─────────────────────────────────────────────────────────────────
 
 function renderApp() {
   applyActiveView();
@@ -456,6 +747,24 @@ function renderCalculators() {
 
   renderPlateBreakdown(suggestedWeight);
   renderProjectionGrid(estimateLift, estimateOneRm);
+
+  // Update dark hero display
+  const heroWeightEl = document.querySelector("#calc-projected-num");
+  const heroE1rmEl = document.querySelector("#calc-e1rm-line");
+  if (heroWeightEl) {
+    heroWeightEl.textContent = estimateOneRm
+      ? (suggestedWeight % 1 === 0 ? String(suggestedWeight) : suggestedWeight.toFixed(1))
+      : "—";
+  }
+  if (heroE1rmEl) {
+    heroE1rmEl.textContent = estimateOneRm ? `e1RM : ${Math.round(estimateOneRm)}` : "e1RM : —";
+  }
+
+  // Sync stepper displays
+  const repsDisp = document.querySelector("#target-reps-display");
+  const rpeDisp = document.querySelector("#target-rpe-display");
+  if (repsDisp) repsDisp.textContent = elements.targetReps.value;
+  if (rpeDisp) rpeDisp.textContent = elements.targetRpe.value;
 }
 
 function renderLiftCards() {
@@ -687,31 +996,146 @@ function renderTrendChart(points, lift) {
   `;
 }
 
-function handleTableAction(event) {
-  const { action, id } = event.currentTarget.dataset;
-  const index = state.entries.findIndex((entry) => entry.id === id);
+function renderStorageNote() {
+  const { syncMode, user, syncError } = fb;
+  let html = "";
 
-  if (index === -1) {
+  switch (syncMode) {
+    case "initializing":
+      html = `
+        <div class="storage-card">
+          <p class="storage-copy">正在初始化…</p>
+        </div>
+      `;
+      break;
+
+    case "config-missing":
+      html = `
+        <div class="storage-card">
+          <div class="result-label">本機模式</div>
+          <p class="storage-copy">
+            資料存在瀏覽器 <code>localStorage</code>。如需跨裝置同步，請先建立 Firebase 專案並填入 <code>firebase-config.js</code>，詳見 <code>FIREBASE_SETUP.md</code>。
+          </p>
+        </div>
+      `;
+      break;
+
+    case "signed-out":
+      html = `
+        <div class="storage-card">
+          <div class="result-label">本機模式</div>
+          <p class="storage-copy">
+            資料存在瀏覽器 <code>localStorage</code>，換裝置或清除資料後不保留。
+            用 Google 登入後可跨手機自動同步。
+          </p>
+          <button class="button subtle auth-action-btn" id="auth-sign-in-btn" type="button">使用 Google 登入</button>
+        </div>
+      `;
+      break;
+
+    case "signing-in":
+    case "syncing":
+      html = `
+        <div class="storage-card">
+          <p class="storage-copy sync-pending">${syncMode === "signing-in" ? "登入中…" : "連接 Firestore…"}</p>
+        </div>
+      `;
+      break;
+
+    case "cloud": {
+      const localCount = loadLocalEntries().length;
+      html = `
+        <div class="storage-card cloud-mode">
+          <div class="result-label sync-badge-cloud">雲端模式</div>
+          <p class="storage-copy">
+            已登入：<strong>${escapeHtml(user?.displayName || "")}</strong>
+            <br>資料自動同步到 Firebase，跨手機共用。
+          </p>
+          ${localCount > 0 ? `
+            <button class="button subtle auth-action-btn" id="auth-migrate-btn" type="button">
+              把本機 ${localCount} 筆資料同步到雲端
+            </button>
+          ` : ""}
+          <button class="button subtle auth-action-btn" id="auth-sign-out-btn" type="button">登出</button>
+        </div>
+      `;
+      break;
+    }
+
+    case "error":
+      html = `
+        <div class="storage-card error-mode">
+          <div class="result-label sync-badge-error">同步失敗</div>
+          <p class="storage-copy">
+            無法連線到 Firestore，目前使用本機暫存資料。
+            ${syncError ? `<br><small>${escapeHtml(syncError)}</small>` : ""}
+          </p>
+          <button class="button subtle auth-action-btn" id="auth-sign-out-btn" type="button">登出</button>
+        </div>
+      `;
+      break;
+  }
+
+  elements.storageNote.innerHTML = html;
+
+  // Bind dynamic buttons after each render
+  elements.storageNote.querySelector("#auth-sign-in-btn")?.addEventListener("click", handleSignIn);
+  elements.storageNote.querySelector("#auth-sign-out-btn")?.addEventListener("click", handleSignOut);
+  elements.storageNote.querySelector("#auth-migrate-btn")?.addEventListener("click", migrateLocalToCloud);
+}
+
+function renderProjectionGrid(lift, oneRm) {
+  if (!oneRm) {
+    elements.projectionGrid.innerHTML = `
+      <div class="empty-state">
+        <p>先輸入基準組，系統就會列出 1 到 12 下在不同 RPE 下的估計重量。</p>
+      </div>
+    `;
     return;
   }
 
-  if (action === "delete") {
-    state.entries.splice(index, 1);
-  }
+  const columnRpes = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+  const rowReps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const targetReps = toNumber(elements.targetReps.value);
+  const targetRpe = toNumber(elements.targetRpe.value);
 
-  if (action === "duplicate") {
-    const source = state.entries[index];
-    state.entries.push({
-      ...source,
-      id: crypto.randomUUID(),
-      date: dateInputValue(new Date()),
-    });
-  }
-
-  sortEntries();
-  persistState();
-  renderApp();
+  elements.projectionGrid.innerHTML = `
+    <div class="projection-scroll">
+      <table class="projection-table coach-table">
+        <thead>
+          <tr>
+            <th>次數 / RPE</th>
+            ${columnRpes.map((rpe) => `<th class="${rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : ""}">${rpe}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${rowReps
+            .map((reps) => `
+              <tr>
+                <td class="row-label">${reps} 下</td>
+                ${columnRpes
+                  .map((rpe) => {
+                    const weight = prescribeLoad(oneRm, reps, rpe, state.profile.formula, state.profile.rounding);
+                    const isTarget = reps === targetReps && rpe === targetRpe;
+                    const colClass = rpe >= 9 ? "col-high-rpe" : rpe >= 8 ? "col-mid-rpe" : "";
+                    return `<td class="${colClass}${isTarget ? " target-cell" : ""}">${formatKg(weight)}</td>`;
+                  })
+                  .join("")}
+              </tr>
+            `)
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint">
+      以 ${LIFT_META[lift].label} 目前基準組推得的 e1RM 為基礎。
+      <span class="hint-target">藍框</span>為「下一組」目標格，
+      <span class="hint-high">紅底</span>為 RPE ≥ 9 競賽強度。
+    </p>
+  `;
 }
+
+// ─── Data / export ──────────────────────────────────────────────────────────
 
 function exportJson() {
   downloadFile(
@@ -763,22 +1187,40 @@ function exportCsv() {
 
 function importJson(event) {
   const [file] = event.target.files || [];
-  if (!file) {
-    return;
-  }
+  if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const parsed = JSON.parse(reader.result);
       const nextState = normalizeImportedState(parsed);
-      state.profile = nextState.profile;
-      state.ui = nextState.ui;
-      state.entries = nextState.entries;
-      sortEntries();
-      persistState();
-      hydrateProfileInputs();
-      renderApp();
+
+      if (isCloudMode()) {
+        // Write imported entries to Firestore (additive batch)
+        const uid = fb.user.uid;
+        const BATCH_SIZE = 400;
+        const entries = nextState.entries;
+        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+          const batch = writeBatch(fb.db);
+          entries.slice(i, i + BATCH_SIZE).forEach((entry) => {
+            batch.set(doc(fb.db, "users", uid, "sbd-entries", entry.id), entry);
+          });
+          await batch.commit();
+        }
+        // Save imported profile
+        state.profile = nextState.profile;
+        await saveProfileToCloud();
+        hydrateProfileInputs();
+        // onSnapshot re-renders entries
+      } else {
+        state.profile = nextState.profile;
+        state.ui = nextState.ui;
+        state.entries = nextState.entries;
+        sortEntries();
+        persistState();
+        hydrateProfileInputs();
+        renderApp();
+      }
     } catch (error) {
       window.alert("匯入失敗，請確認 JSON 格式正確。");
     } finally {
@@ -790,19 +1232,40 @@ function importJson(event) {
 }
 
 function clearAllData() {
-  const shouldClear = window.confirm("這會刪除所有本機訓練資料，是否繼續？");
-  if (!shouldClear) {
-    return;
-  }
+  const shouldClear = window.confirm("這會刪除所有訓練資料，是否繼續？");
+  if (!shouldClear) return;
 
-  state.profile = structuredClone(DEFAULT_STATE.profile);
-  state.ui = structuredClone(DEFAULT_STATE.ui);
-  state.entries = [];
-  persistState();
-  hydrateProfileInputs();
-  setDefaultDate();
-  renderApp();
+  if (isCloudMode()) {
+    const uid = fb.user.uid;
+    const BATCH_SIZE = 400;
+    const entries = [...state.entries];
+    (async () => {
+      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+        const batch = writeBatch(fb.db);
+        entries.slice(i, i + BATCH_SIZE).forEach((entry) => {
+          batch.delete(doc(fb.db, "users", uid, "sbd-entries", entry.id));
+        });
+        await batch.commit();
+      }
+      state.profile = structuredClone(DEFAULT_STATE.profile);
+      await saveProfileToCloud();
+      persistStateLocal();
+      hydrateProfileInputs();
+      setDefaultDate();
+      // onSnapshot updates entries to []
+    })().catch(console.error);
+  } else {
+    state.profile = structuredClone(DEFAULT_STATE.profile);
+    state.ui = structuredClone(DEFAULT_STATE.ui);
+    state.entries = [];
+    persistState();
+    hydrateProfileInputs();
+    setDefaultDate();
+    renderApp();
+  }
 }
+
+// ─── Compute ────────────────────────────────────────────────────────────────
 
 function fillRpeSelect(select, defaultValue) {
   select.innerHTML = RPE_VALUES.map(
@@ -980,65 +1443,22 @@ function rirFromRpe(rpe) {
   return clamp(10 - toNumber(rpe), 0, 4);
 }
 
-function renderProjectionGrid(lift, oneRm) {
-  if (!oneRm) {
-    elements.projectionGrid.innerHTML = `
-      <div class="empty-state">
-        <p>先輸入基準組，系統就會列出 1 到 8 下在不同 RPE 下的估計重量。</p>
-      </div>
-    `;
-    return;
-  }
-
-  const columnRpes = [6, 7, 8, 9, 9.5];
-  const rowReps = [1, 2, 3, 4, 5, 6, 7, 8];
-
-  elements.projectionGrid.innerHTML = `
-    <div class="projection-scroll">
-      <table class="projection-table">
-        <thead>
-          <tr>
-            <th>${LIFT_META[lift].label}</th>
-            ${columnRpes.map((rpe) => `<th>RPE ${rpe}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${rowReps
-            .map(
-              (reps) => `
-                <tr>
-                  <td>${reps} 下</td>
-                  ${columnRpes
-                    .map((rpe) => {
-                      const weight = prescribeLoad(oneRm, reps, rpe, state.profile.formula, state.profile.rounding);
-                      return `<td>${formatKg(weight)}</td>`;
-                    })
-                    .join("")}
-                </tr>
-              `,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </div>
-    <p class="form-hint">這張表以目前基準組推得的 e1RM 為基礎，常用於當天調整下一組重量，不等於正式實測 1RM。</p>
-  `;
-}
-
-function renderStorageNote() {
-  elements.storageNote.innerHTML = `
-    <div class="storage-card">
-      <div class="result-label">資料儲存方式</div>
-      <div class="storage-copy">
-        目前這版 SBD app 是存在你現在使用的瀏覽器 <code>localStorage</code>，也就是「這台裝置上的這個瀏覽器」。
-        它不是自動雲端同步，所以換手機、換瀏覽器、清除網站資料後，記錄不會自己跟過去。
-      </div>
-      <div class="storage-copy">
-        如果你要像 <code>D:\\AI_dev\\記帳</code> 那個專案一樣，我們可以加上 Google 登入 + Firebase Firestore，
-        讓你用同一個帳號在不同手機或電腦同步訓練資料。
-      </div>
-    </div>
-  `;
+function normalizeEntry(data) {
+  if (!data) return null;
+  const entry = {
+    id: data.id || crypto.randomUUID(),
+    date: data.date || dateInputValue(new Date()),
+    lift: Object.keys(LIFT_META).includes(data.lift) ? data.lift : "squat",
+    variant: data.variant || "",
+    block: data.block || "",
+    weight: toNumber(data.weight),
+    reps: Math.max(1, toNumber(data.reps, 1)),
+    sets: Math.max(1, toNumber(data.sets, 1)),
+    rpe: clamp(toNumber(data.rpe, 8), 6, 10),
+    bodyweight: data.bodyweight === null || data.bodyweight === undefined ? null : toNumber(data.bodyweight),
+    notes: data.notes || "",
+  };
+  return entry.weight > 0 ? entry : null;
 }
 
 function buildPlateBreakdown(targetWeight, barbellWeight) {
@@ -1063,6 +1483,8 @@ function buildPlateBreakdown(targetWeight, barbellWeight) {
   };
 }
 
+// ─── Storage ────────────────────────────────────────────────────────────────
+
 function loadState() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -1076,6 +1498,17 @@ function loadState() {
   }
 }
 
+function loadLocalEntries() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.entries) ? parsed.entries.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 function normalizeImportedState(data) {
   const profile = {
     athleteName: data?.profile?.athleteName ?? "",
@@ -1086,25 +1519,11 @@ function normalizeImportedState(data) {
   const ui = {
     activeView: ["overview", "log", "calculator", "research"].includes(data?.ui?.activeView)
       ? data.ui.activeView
-      : "overview",
+      : "calculator",
   };
 
   const entriesSource = Array.isArray(data?.entries) ? data.entries : [];
-  const entries = entriesSource
-    .map((entry) => ({
-      id: entry.id || crypto.randomUUID(),
-      date: entry.date || dateInputValue(new Date()),
-      lift: Object.keys(LIFT_META).includes(entry.lift) ? entry.lift : "squat",
-      variant: entry.variant || "",
-      block: entry.block || "",
-      weight: toNumber(entry.weight),
-      reps: Math.max(1, toNumber(entry.reps, 1)),
-      sets: Math.max(1, toNumber(entry.sets, 1)),
-      rpe: clamp(toNumber(entry.rpe, 8), 6, 10),
-      bodyweight: entry.bodyweight === null || entry.bodyweight === undefined ? null : toNumber(entry.bodyweight),
-      notes: entry.notes || "",
-    }))
-    .filter((entry) => entry.weight > 0);
+  const entries = entriesSource.map(normalizeEntry).filter(Boolean);
 
   return { profile, ui, entries };
 }
@@ -1112,6 +1531,12 @@ function normalizeImportedState(data) {
 function persistState() {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
+function persistStateLocal() {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// ─── UI helpers ─────────────────────────────────────────────────────────────
 
 function hydrateProfileInputs() {
   elements.athleteName.value = state.profile.athleteName;
@@ -1150,6 +1575,8 @@ function setDefaultDate() {
 function sortEntries() {
   state.entries.sort((a, b) => a.date.localeCompare(b.date));
 }
+
+// ─── Format ─────────────────────────────────────────────────────────────────
 
 function dateInputValue(date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
