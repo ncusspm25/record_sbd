@@ -28,39 +28,45 @@
   </head>
   <body>
     <div class="page-shell">
-      <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">SBD Training Desk</p>
-          <h1>SBD Lab</h1>
-          <p class="hero-text">
-            以公斤制打造的深蹲、臥推、硬舉訓練記錄與 RPE 推算工具。你可以先輸入剛完成的一組，立刻推算接下來任意次數、任意 RPE 該上多少重量。
-          </p>
-          <div class="hero-badges">
-            <span class="badge">公斤制優先</span>
-            <span class="badge">RPE 5.0 - 10.0</span>
-            <span class="badge">e1RM 與 PR</span>
-            <span class="badge">本機與雲端同步</span>
-          </div>
-        </div>
-        <aside class="hero-panel panel">
-          <div class="panel-heading">
-            <h2>設計原則</h2>
-            <span class="micro-tag">Coach Flow</span>
-          </div>
-          <ul class="compact-list">
-            <li>RPE 用來調整當天訓練，PR 與 e1RM 用來看長期進步。</li>
-            <li>先輸入已完成組，再推算目標組，符合實戰選重流程。</li>
-            <li>高次數硬舉的 RPE 可靠度較低，介面會主動提醒。</li>
-            <li>未登入時存在瀏覽器本機；登入後可同步到你的 Firestore。</li>
-          </ul>
-        </aside>
-      </header>
-
-      <nav class="view-nav panel" aria-label="功能選單">
-        <button class="view-tab active" type="button" data-view-target="calculator">計算機</button>
-        <button class="view-tab" type="button" data-view-target="overview">總覽</button>
-        <button class="view-tab" type="button" data-view-target="log">記錄</button>
-        <button class="view-tab" type="button" data-view-target="research">研究</button>
+      <nav class="mobile-dock" aria-label="功能選單">
+        <button class="dock-tab active" type="button" data-view-target="calculator" aria-label="計算機">
+          <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="3" width="16" height="18" rx="3" />
+            <rect x="7" y="6" width="10" height="3" rx="1" class="dock-icon-fill" />
+            <circle cx="8.5" cy="13" r="1.2" class="dock-icon-fill" />
+            <circle cx="12" cy="13" r="1.2" class="dock-icon-fill" />
+            <circle cx="15.5" cy="13" r="1.2" class="dock-icon-fill" />
+            <circle cx="8.5" cy="17" r="1.2" class="dock-icon-fill" />
+            <circle cx="12" cy="17" r="1.2" class="dock-icon-fill" />
+            <circle cx="15.5" cy="17" r="1.2" class="dock-icon-fill" />
+          </svg>
+          <span>計算機</span>
+        </button>
+        <button class="dock-tab" type="button" data-view-target="overview" aria-label="總覽">
+          <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="13" width="3.6" height="7" rx="1" class="dock-icon-fill" />
+            <rect x="10.2" y="9" width="3.6" height="11" rx="1" class="dock-icon-fill" />
+            <rect x="16.4" y="5" width="3.6" height="15" rx="1" class="dock-icon-fill" />
+          </svg>
+          <span>總覽</span>
+        </button>
+        <button class="dock-tab" type="button" data-view-target="log" aria-label="記錄">
+          <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="3" />
+            <line x1="8" y1="9" x2="16" y2="9" />
+            <line x1="8" y1="13" x2="16" y2="13" />
+            <line x1="8" y1="17" x2="13" y2="17" />
+          </svg>
+          <span>記錄</span>
+        </button>
+        <button class="dock-tab" type="button" data-view-target="research" aria-label="研究">
+          <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 4h9a4 4 0 0 1 4 4v12H8a3 3 0 0 1-3-3V4Z" />
+            <line x1="9" y1="8" x2="14" y2="8" />
+            <line x1="9" y1="12" x2="14" y2="12" />
+          </svg>
+          <span>研究</span>
+        </button>
       </nav>
 
       <main class="layout">
@@ -317,47 +323,6 @@
         <p>目前還沒有資料，先新增一筆訓練，或用「載入示範資料」快速體驗。</p>
       </div>
     </template>
-
-    <nav class="mobile-dock" aria-label="手機功能選單">
-      <button class="dock-tab active" type="button" data-view-target="calculator" aria-label="計算機">
-        <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="4" y="3" width="16" height="18" rx="3" />
-          <rect x="7" y="6" width="10" height="3" rx="1" class="dock-icon-fill" />
-          <circle cx="8.5" cy="13" r="1.2" class="dock-icon-fill" />
-          <circle cx="12" cy="13" r="1.2" class="dock-icon-fill" />
-          <circle cx="15.5" cy="13" r="1.2" class="dock-icon-fill" />
-          <circle cx="8.5" cy="17" r="1.2" class="dock-icon-fill" />
-          <circle cx="12" cy="17" r="1.2" class="dock-icon-fill" />
-          <circle cx="15.5" cy="17" r="1.2" class="dock-icon-fill" />
-        </svg>
-        <span>計算機</span>
-      </button>
-      <button class="dock-tab" type="button" data-view-target="overview" aria-label="總覽">
-        <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="4" y="13" width="3.6" height="7" rx="1" class="dock-icon-fill" />
-          <rect x="10.2" y="9" width="3.6" height="11" rx="1" class="dock-icon-fill" />
-          <rect x="16.4" y="5" width="3.6" height="15" rx="1" class="dock-icon-fill" />
-        </svg>
-        <span>總覽</span>
-      </button>
-      <button class="dock-tab" type="button" data-view-target="log" aria-label="記錄">
-        <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="4" y="4" width="16" height="16" rx="3" />
-          <line x1="8" y1="9" x2="16" y2="9" />
-          <line x1="8" y1="13" x2="16" y2="13" />
-          <line x1="8" y1="17" x2="13" y2="17" />
-        </svg>
-        <span>記錄</span>
-      </button>
-      <button class="dock-tab" type="button" data-view-target="research" aria-label="研究">
-        <svg class="dock-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 4h9a4 4 0 0 1 4 4v12H8a3 3 0 0 1-3-3V4Z" />
-          <line x1="9" y1="8" x2="14" y2="8" />
-          <line x1="9" y1="12" x2="14" y2="12" />
-        </svg>
-        <span>研究</span>
-      </button>
-    </nav>
 
     <script type="module" src="./app.js"></script>
   </body>
